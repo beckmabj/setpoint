@@ -733,11 +733,18 @@ const PREPARED_PREFIXES = [
   'babyfood,', 'formulated bar', 'toppings,', 'sauces,', 'gravy,', 'soup,',
 ];
 
+// Restaurant dishes name their components ("chicken tenderloin platter"), so
+// they can match a query word-for-word while being the wrong kind of food.
+const DISH_WORDS = /\b(platter|sandwich|burrito|taco|pizza|nuggets|entree|meal|fried|breaded|casserole|salad with|sub|wrap)\b/;
+function isPrepared(f) {
+  const desc = String(f.name).toLowerCase();
+  return PREPARED_PREFIXES.some((p) => desc.startsWith(p)) || DISH_WORDS.test(desc);
+}
+
 function usdaRank(f) {
   const tier = USDA_TIER[f.dataType];
   let score = (tier === undefined ? 4 : tier) * 10;
-  const desc = String(f.name).toLowerCase();
-  if (PREPARED_PREFIXES.some((p) => desc.startsWith(p))) score += 25;
+  if (isPrepared(f)) score += 25;
   return score;
 }
 
@@ -750,14 +757,22 @@ function usdaRank(f) {
 // "olive OIL"); USDA puts it first ("Beef, ground", "Milk, whole", "Oil,
 // olive"). So test both ends of the query against the description's head
 // segment and take whichever matches better.
+// How many of the query's words the description doesn't mention at all.
+// Plural-aware: searching "tenderloins" must still match "tenderloin".
+function missingWords(f, query) {
+  const desc = String(f.name).toLowerCase();
+  const words = String(query).toLowerCase().trim().split(/\s+/).filter(Boolean);
+  return words.filter((w) => !desc.includes(w) && !desc.includes(w.replace(/s$/, ''))).length;
+}
+
 function queryAffinity(f, query) {
   const desc = String(f.name).toLowerCase();
   const words = String(query).toLowerCase().trim().split(/\s+/).filter(Boolean);
   if (!words.length) return 9;
   const segs = desc.split(/,\s*/);
   const head = segs[0];
-  const missing = words.filter((w) => !desc.includes(w)).length;
   const same = (seg, w) => seg === w || seg === w + 's' || seg === w.replace(/s$/, '');
+  const missing = missingWords(f, query);
 
   const scoreFor = (w) => {
     if (same(head, w)) return 0;
@@ -770,7 +785,10 @@ function queryAffinity(f, query) {
   };
   // Last word first: it's the head noun in most compound food names.
   const base = Math.min(scoreFor(words[words.length - 1]), scoreFor(words[0]));
-  return base + Math.min(missing, 1);
+  // Missing words are weighted heavily. USDA's search treats terms as
+  // independent, so "chicken tenderloins" returns pork and ostrich tenderloin;
+  // an entry that ignores half the query should not outrank one that matches.
+  return base + missing * 4;
 }
 
 async function usdaQuery(query, dataType, pageSize) {
@@ -796,22 +814,41 @@ async function searchFoods(query) {
   ]);
   // De-dupe by fdcId, curated winning any collision.
   const seen = new Set();
-  const mapped = curated.concat(branded)
-    .map(mapUsdaFood)
-    .filter((f) => {
-      if (seen.has(f.id)) return false;
-      seen.add(f.id);
-      return plausibleFood(f);
-    });
+  const take = (list) => list.map(mapUsdaFood).filter((f) => {
+    if (seen.has(f.id)) return false;
+    seen.add(f.id);
+    return plausibleFood(f);
+  });
+  let mapped = take(curated.concat(branded));
+
+  // USDA matches query words independently, so "chicken tenderloins" comes
+  // back as pork, beef, and ostrich tenderloin with barely any chicken. When
+  // the results largely ignore the leading noun, ask again for just that noun
+  // so there is something on-topic to rank.
+  const words = String(query).toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    const noun = words[0].replace(/s$/, '');
+    const onTopic = mapped.filter((f) => f.name.toLowerCase().includes(noun));
+    if (onTopic.length < 5) {
+      try {
+        mapped = mapped.concat(take(await usdaQuery(words[0], 'Foundation,SR Legacy', 25)));
+      } catch (err) { /* fallback is best-effort; keep what we have */ }
+    }
+  }
+
   // Stable sort: rank, then query affinity, then USDA's own relevance order.
   return mapped
     .map((f, i) => ({
       f, i, r: usdaRank(f), a: queryAffinity(f, query),
       s: formScore(f), t: USDA_TIER_FINE[f.dataType] ?? 4,
+      // Primary key: is this the food you asked for? Missing query words count
+      // against it, and so does being a prepared dish — otherwise "chicken
+      // tenderloin platter, fried" wins on an exact word match over plain
+      // chicken. A curated "Ostrich, tenderloin" still loses to either.
+      m: missingWords(f, query) + (isPrepared(f) ? 1 : 0),
     }))
-    // Relevance and form are weighed together, not in sequence: a canned
-    // product that name-matches exactly should still lose to the raw food.
-    .sort((x, y) => (x.r - y.r) || ((x.a * 2 + x.s) - (y.a * 2 + y.s)) || (x.t - y.t) || (x.i - y.i))
+    .sort((x, y) => (x.m - y.m) || (x.r - y.r)
+      || ((x.a * 2 + x.s) - (y.a * 2 + y.s)) || (x.t - y.t) || (x.i - y.i))
     .map((x) => x.f)
     .slice(0, 12);
 }
