@@ -2051,12 +2051,20 @@ function renderMealTimeline(cd, dayLog) {
     byHour.get(h).push(f);
   });
 
-  // The whole day, midnight to 11 PM. A window around what's already logged
-  // meant you couldn't go back and add breakfast after logging dinner, which
-  // is exactly when you need to. Empty hours render as a single compact row.
-  const hours = [];
-  for (let h = 0; h <= 23; h++) hours.push(h);
+  // A normal eating day, 5 AM to 11 PM, always shown in full so you can go
+  // back and add breakfast after logging dinner. The range widens on demand
+  // rather than defaulting to all 24 rows: any hour that actually holds food
+  // is included, as is the current hour, so a 1 AM snack or a night shift
+  // still appears without padding every day with dead early-morning slots.
+  const DAY_START = 5;
+  const DAY_END = 23;
   const nowH = new Date().getHours();
+  const marks = Array.from(byHour.keys());
+  if (isToday) marks.push(nowH);
+  const startH = Math.max(0, Math.min(DAY_START, ...marks));
+  const endH = Math.min(23, Math.max(DAY_END, ...marks));
+  const hours = [];
+  for (let h = startH; h <= endH; h++) hours.push(h);
 
   const hourBlock = (h, items) => {
     const tot = (items || []).reduce((s, f) => ({
