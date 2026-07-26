@@ -172,6 +172,16 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 /* modal / sheet */
 .overlay { position: fixed; inset: 0; background: rgba(28,35,33,0.42); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
 .sheet { width: 100%; max-width: 480px; background: var(--paper); border-radius: 18px 18px 0 0; max-height: 86vh; overflow-y: auto; padding: 16px; box-shadow: 0 -8px 30px rgba(0,0,0,0.15); }
+
+/* Camera scanner. Lives outside #app so render() can't destroy the <video>;
+   deliberately fixed dark in both themes, since it sits over a camera feed. */
+.scan-overlay { position: fixed; inset: 0; z-index: 90; background: #000; overflow: hidden; }
+.scan-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-reticle { position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%); width: 78%; max-width: 330px; aspect-ratio: 5 / 3; border: 2px solid rgba(255,255,255,0.92); border-radius: 14px; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.5); pointer-events: none; }
+.scan-hint { position: absolute; left: 0; right: 0; top: calc(44% + 24vh); text-align: center; color: rgba(255,255,255,0.85); font-size: 13px; padding: 0 24px; pointer-events: none; }
+.scan-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px calc(18px + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); }
+.scan-btn { border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.35); color: #fff; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.line-rule { flex: 1; height: 1px; background: var(--line); }
 @media (min-width: 480px) { .overlay { align-items: center; } .sheet { border-radius: 18px; max-height: 80vh; } }
 
 /* food picker tabs reuse .pill-toggle */
@@ -650,6 +660,7 @@ const iconTrash = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" s
 const iconScale = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 7v5l3 2"/></svg>`;
 const iconSearch = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>`;
 const iconBarcode = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5v14M7 5v14M10 5v14M13 5v14M15 5v14M18 5v14M21 5v14" stroke-width="1.6"/></svg>`;
+const iconCamera = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.2l1.1-2h8.4l1.1 2h2.2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.4"/></svg>`;
 const iconZap = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>`;
 const iconChefHat = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19h12M7 19v-6.2a5 5 0 0 1-2-4c0-2.8 2.2-5 5-5 .7 0 1.4.2 2 .4A5 5 0 0 1 21 8.8c0 1.8-1 3.4-2 4.2V19"/></svg>`;
 const iconEditDay = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13l3 3v13H4z"/><path d="M8 4v6h8V4M8 14h8"/></svg>`;
@@ -1675,9 +1686,93 @@ function renderShortcuts() {
 // ---------------------------------------------------------------------
 function closeBarcodeSheet() { S.barcode = null; render(); }
 window.closeBarcodeSheet = closeBarcodeSheet;
-async function lookupBarcode(e) {
+
+// ---------------------------------------------------------------------
+// Camera barcode scanner
+//
+// Safari has no BarcodeDetector API, so iOS needs a decoder library. ZXing
+// is imported lazily from a CDN the first time the scanner opens, so it
+// costs nothing on load. Product barcodes are EAN/UPC, i.e. 1D, so the
+// one-dimensional reader is used: it's faster and misreads less than the
+// multi-format one.
+//
+// The overlay is appended to <body>, NOT into #app. render() replaces #app's
+// innerHTML wholesale, which would tear out a live <video> mid-stream.
+// ---------------------------------------------------------------------
+let scanner = null;
+
+function scannerAvailable() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && window.isSecureContext;
+}
+
+async function openScanner() {
+  if (scanner) return;
+  if (!scannerAvailable()) {
+    toast(window.isSecureContext ? 'No camera available on this device' : 'Camera needs an https connection');
+    return;
+  }
+  const el = document.createElement('div');
+  el.className = 'scan-overlay';
+  el.innerHTML = `
+    <video class="scan-video" playsinline muted autoplay></video>
+    <div class="scan-reticle"></div>
+    <div class="scan-hint" id="scan-hint">Starting camera…</div>
+    <div class="scan-bar">
+      <button class="scan-btn" id="scan-cancel">Cancel</button>
+      <span class="t12" style="color:rgba(255,255,255,0.7);">Hold steady over the barcode</span>
+    </div>`;
+  document.body.appendChild(el);
+  scanner = { el, controls: null };
+  el.querySelector('#scan-cancel').addEventListener('click', closeScanner);
+
+  try {
+    const { BrowserMultiFormatOneDReader } = await import('https://esm.sh/@zxing/browser@0.1.5');
+    if (!scanner) return; // cancelled while the library was downloading
+    const reader = new BrowserMultiFormatOneDReader();
+    const hint = el.querySelector('#scan-hint');
+    const controls = await reader.decodeFromConstraints(
+      { video: { facingMode: { ideal: 'environment' } } },
+      el.querySelector('video'),
+      (result) => {
+        // Fires continuously, including with no result; only act on a hit.
+        if (!result || !scanner) return;
+        const code = result.getText();
+        closeScanner();
+        onBarcodeScanned(code);
+      },
+    );
+    if (!scanner) { controls.stop(); return; } // cancelled while camera started
+    scanner.controls = controls;
+    if (hint) hint.textContent = 'Point at the barcode';
+  } catch (err) {
+    console.error('scanner failed to start:', err);
+    const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+    const missing = err && (err.name === 'NotFoundError' || err.name === 'OverconstrainedError');
+    closeScanner();
+    toast(denied ? 'Camera permission denied' : missing ? 'No camera found' : 'Could not start the camera');
+  }
+}
+window.openScanner = openScanner;
+
+function closeScanner() {
+  if (!scanner) return;
+  const s = scanner;
+  scanner = null; // clear first so in-flight callbacks bail out
+  try { if (s.controls) s.controls.stop(); } catch (err) { /* already stopped */ }
+  if (s.el && s.el.parentNode) s.el.parentNode.removeChild(s.el);
+}
+window.closeScanner = closeScanner;
+
+function onBarcodeScanned(code) {
+  if (!S.barcode) S.barcode = { forDate: todayKey(), code: '', status: 'idle', product: null, grams: 100 };
+  S.barcode.code = code;
+  render();
+  lookupBarcode(null, code);
+}
+async function lookupBarcode(e, codeOverride) {
   if (e) e.preventDefault();
-  const code = document.getElementById('barcode-input').value.trim();
+  const input = document.getElementById('barcode-input');
+  const code = String(codeOverride != null ? codeOverride : (input ? input.value : '')).trim();
   if (!code) return;
   S.barcode.code = code; S.barcode.status = 'loading'; S.barcode.product = null; render();
   try {
@@ -1715,6 +1810,8 @@ window.confirmBarcode = confirmBarcode;
 function renderBarcodeSheet() {
   const b = S.barcode;
   let body = `
+    <button class="btn btn-primary btn-block mb3 row center g2" onclick="openScanner()">${iconCamera} Scan with camera</button>
+    <div class="row center g2 mb3"><span class="line-rule"></span><span class="fainter t11">or type it</span><span class="line-rule"></span></div>
     <form onsubmit="lookupBarcode(event)" class="row g2 mb3">
       <input class="input" id="barcode-input" inputmode="numeric" placeholder="Type the barcode number" value="${esc(b.code)}">
       <button type="submit" class="btn btn-primary" style="padding:0 14px;">${iconSearch}</button>
