@@ -79,11 +79,26 @@ python3 -m http.server 8000
 
 ## Current state / next steps
 
-- Firestore security rules must be published in the Firebase console
-  (users can only read/write `users/{their own uid}`).
-- Deploy target: GitHub Pages, serving `index.html` from repo root.
-  Then open on iPhone in Safari → Add to Home Screen (installs as a PWA).
-  Note: iOS Safari cannot run JS from a local file, so a real https:// URL
-  is required on mobile — this is why hosting is necessary, not optional.
+**Deployed and working.**
+
+- Live at https://beckmabj.github.io/setpoint/ — GitHub Pages serving
+  `index.html` from the root of `main` in `beckmabj/setpoint` (public repo;
+  public is required for Pages on a free account). Pushing to `main`
+  redeploys automatically, usually within a minute.
+- Firestore rules are published; the source of truth is `firestore.rules`
+  in this repo. That file is a *record* — editing it does nothing on its
+  own. To change the live rules, paste it into the Firebase console at
+  Firestore Database → Rules → Publish.
+- Firebase Auth **authorized domains** must include every host the app is
+  served from, or sign-in fails there with no obvious error. Currently
+  authorized: `localhost`, `beckmabj.github.io`, `setpoint-f9948.firebaseapp.com`.
+  Adding a custom domain later means adding it here too.
+- The Firebase config in `index.html` is public by design. It's an
+  identifier, not a secret; the Firestore rules are what protect the data.
+- Verified end to end: account creation, weight logging, persistence across
+  refresh and re-login, and installed to iPhone home screen as a PWA.
+
+Next steps:
+
 - Not yet built: Recipes / New Recipe (shown as "Soon" in the Shortcuts sheet).
 - Barcode entry is currently typed-in, not camera-scanned.
