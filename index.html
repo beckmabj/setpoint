@@ -201,6 +201,35 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .scan-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px calc(18px + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); }
 .scan-btn { border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.35); color: #fff; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
+
+/* Day macro bars */
+.daybars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
+.daybar-val { color: var(--ink-faint); margin-bottom: 4px; white-space: nowrap; }
+.daybar-val.is-over { color: var(--brick); }
+.daybar-track { height: 4px; border-radius: 3px; background: var(--tan-soft); overflow: hidden; }
+.daybar-fill { height: 100%; border-radius: 3px; transition: width 220ms ease; }
+
+/* Food log timeline: a continuous run of hour slots with a time rail */
+.tl { position: relative; }
+.tl-hour { position: relative; padding-left: 46px; margin-bottom: 4px; }
+.tl-hour::before { content: ''; position: absolute; left: 21px; top: 0; bottom: -4px; width: 1px; background: var(--line); }
+.tl-hour:last-child::before { bottom: 50%; }
+.tl-hour-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px -46px; }
+.tl-hour-chip { font-size: 11.5px; font-weight: 600; color: var(--ink-faint); background: var(--tan-soft); border-radius: 999px; padding: 3px 9px; min-width: 52px; text-align: center; }
+.tl-hour.is-empty .tl-hour-chip { background: transparent; color: var(--ink-fainter); }
+.tl-hour-tot { margin-left: auto; font-size: 10.5px; color: var(--ink-faint); }
+.tl-add { width: 22px; height: 22px; border-radius: 999px; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-fainter); display: inline-flex; align-items: center; justify-content: center; padding: 0; position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.tl-add svg { width: 12px; height: 12px; }
+.tl-add::after { content: ''; position: absolute; inset: -11px; }
+.tl-add:hover { color: var(--teal); border-color: var(--teal); }
+.tl-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+.tl-time { width: 34px; margin-left: -46px; font-size: 10px; color: var(--ink-fainter); padding-top: 15px; text-align: right; flex: none; }
+.tl-card { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; text-align: left; cursor: pointer; font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+.tl-emoji { font-size: 19px; line-height: 1; flex: none; }
+.tl-body { flex: 1; min-width: 0; display: block; }
+.tl-name { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-macros { display: block; font-size: 10.5px; color: var(--ink-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-edit { flex: none; color: var(--ink-fainter); display: flex; }
 .toast-action { margin-left: 12px; background: none; border: none; color: var(--teal-deep); font-weight: 700; font-size: 13px; cursor: pointer; padding: 2px 4px; }
 /* A day with nothing logged: a hairline track, never a filled bar */
 
@@ -1005,6 +1034,7 @@ const iconBarcode = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"
 const iconHeart = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 6.6a5 5 0 0 0-7.1 0L12 8.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 22l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>`;
 const iconHeartFull = `<svg width="17" height="17" viewBox="0 0 24 24" fill="var(--brick)" stroke="var(--brick)" stroke-width="2" stroke-linejoin="round"><path d="M20.8 6.6a5 5 0 0 0-7.1 0L12 8.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 22l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>`;
 const iconCloudOff = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M8.5 7.2A5 5 0 0 1 18 9h.5a3.5 3.5 0 0 1 2.5 6"/><path d="M16 18H6.5A3.5 3.5 0 0 1 6 11a5 5 0 0 1 .6-1.6"/></svg>`;
+const iconPencil = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"/></svg>`;
 const iconClock = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
 const iconCamera = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.2l1.1-2h8.4l1.1 2h2.2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.4"/></svg>`;
 const iconZap = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>`;
@@ -1810,12 +1840,25 @@ function renderLog() {
     </div>`;
   }).join('');
 
+  // Four labelled progress bars rather than a row of bare fractions: the fill
+  // shows how far through the day you are at a glance.
   const macroLine = `
-    <div class="row between t12 mono faint mt2">
-      <span>${round(totals.calories)}/${t.calories}</span>
-      <span>P ${round(totals.protein)}/${t.protein}</span>
-      <span>F ${round(totals.fat)}/${t.fat}</span>
-      <span>C ${round(totals.carbs)}/${t.carbs}</span>
+    <div class="daybars mt3">
+      ${[
+        { k: 'calories', label: '', c: 'var(--calories)' },
+        { k: 'protein', label: 'P ', c: 'var(--brick)' },
+        { k: 'fat', label: 'F ', c: 'var(--amber)' },
+        { k: 'carbs', label: 'C ', c: 'var(--carbs)' },
+      ].map((m) => {
+        const val = round(totals[m.k]);
+        const target = t[m.k] || 1;
+        const pct = round(clamp(val / target, 0, 1) * 100, 1);
+        const over = val > target;
+        return `<div class="daybar">
+          <div class="daybar-val mono t11 ${over ? 'is-over' : ''}">${m.label}${val}<span class="fainter">/${target}</span></div>
+          <div class="daybar-track"><div class="daybar-fill" style="width:${pct}%; background:${m.c};"></div></div>
+        </div>`;
+      }).join('')}
     </div>`;
 
   const foodItems = renderMealTimeline(cd, dayLog);
@@ -1833,7 +1876,7 @@ function renderLog() {
 
   <div class="row between mb2 mt2">
     <span class="w600 t14">Food log</span>
-    <button class="btn btn-primary btn-sm row g1" onclick="openPicker('${cd}')">${iconPlus} Add food</button>
+    <span class="fainter t11">${(dayLog.foods || []).length} item${(dayLog.foods || []).length === 1 ? '' : 's'}</span>
   </div>
   ${foodItems}
   `;
@@ -1857,53 +1900,95 @@ function slotTimestamp(dateKey, hour) {
   return new Date(y, m - 1, d, hour, 0, 0, 0).getTime();
 }
 
+// A little visual anchor per food. Purely cosmetic, but it makes a long day
+// scannable at a glance instead of a wall of identical rows.
+const FOOD_EMOJI = [
+  [/\begg white|egg-white/i, '🥚'], [/\beggs?\b/i, '🍳'], [/chicken|poultry|turkey/i, '🍗'],
+  [/beef|steak|burger/i, '🥩'], [/pork|bacon|ham\b/i, '🥓'], [/fish|salmon|tuna|shrimp/i, '🐟'],
+  [/rice\b/i, '🍚'], [/bread|toast|bagel|tortilla|wrap|pita/i, '🍞'], [/potato|hash brown|fries/i, '🥔'],
+  [/pasta|noodle|spaghetti/i, '🍝'], [/yogurt|yoghurt/i, '🥛'], [/milk|creamer|cream\b/i, '🥛'],
+  [/cheese|wedge/i, '🧀'], [/avocado/i, '🥑'], [/tomato/i, '🍅'], [/coleslaw|cabbage|slaw/i, '🥬'],
+  [/salad|lettuce|greens|spinach|kale/i, '🥗'], [/broccoli|medley|vegetable|veggie/i, '🥦'],
+  [/banana/i, '🍌'], [/apple/i, '🍎'], [/berr|strawberr/i, '🍓'], [/orange|citrus/i, '🍊'],
+  [/nut|almond|peanut|cashew/i, '🥜'], [/protein bar|bar\b/i, '🍫'], [/chocolate|candy|cookie/i, '🍪'],
+  [/chip|cracker|pretzel|snack/i, '🥨'], [/sauce|dressing|syrup|dip|condiment/i, '🥫'],
+  [/oil|butter/i, '🧈'], [/coffee|espresso|latte/i, '☕'], [/soda|drink|juice|beverage/i, '🥤'],
+  [/oat|cereal|granola/i, '🥣'], [/shake|smoothie|whey/i, '🥤'], [/soup|stew|chili/i, '🍲'],
+];
+function foodEmoji(name) {
+  const n = String(name || '');
+  for (const [re, e] of FOOD_EMOJI) if (re.test(n)) return e;
+  return '🍽️';
+}
+
+// The day as a continuous timeline of hour slots, rather than only the hours
+// that happen to contain food. Every hour is a place you can add to, which is
+// how you actually think about a day.
 function renderMealTimeline(cd, dayLog) {
   const foods = (dayLog.foods || []).slice().sort((a, b) => entryTime(a) - entryTime(b));
-  if (!foods.length) {
-    return `<div class="card empty">Nothing logged ${formatDateLabel(cd).toLowerCase()} yet. Add your first food above.</div>`;
-  }
-  // Group by the hour each entry was logged. -1 is the "no usable timestamp"
-  // bucket, so imported entries never masquerade as a real mealtime.
+  const isToday = cd === todayKey();
+
   const byHour = new Map();
+  let untimed = [];
   foods.forEach((f) => {
     const t = entryTime(f);
-    const h = t > 0 ? new Date(t).getHours() : -1;
+    if (t <= 0) { untimed.push(f); return; }
+    const h = new Date(t).getHours();
     if (!byHour.has(h)) byHour.set(h, []);
     byHour.get(h).push(f);
   });
 
-  return Array.from(byHour.keys()).sort((a, b) => a - b).map((h) => {
-    const items = byHour.get(h);
-    const tot = items.reduce((s, f) => ({
+  // Hour range: cover everything logged, extend to now on today, and always
+  // leave a couple of empty slots ahead to add into.
+  const logged = Array.from(byHour.keys());
+  const nowH = new Date().getHours();
+  let startH = logged.length ? Math.min(...logged) : (isToday ? Math.max(0, nowH - 2) : 7);
+  let endH = logged.length ? Math.max(...logged) : startH;
+  if (isToday) endH = Math.max(endH, nowH);
+  endH = Math.min(23, endH + 2);
+  if (!logged.length && !isToday) endH = Math.min(23, startH + 12);
+
+  const hours = [];
+  for (let h = startH; h <= endH; h++) hours.push(h);
+
+  const hourBlock = (h, items) => {
+    const tot = (items || []).reduce((s, f) => ({
       calories: s.calories + (f.calories || 0), protein: s.protein + (f.protein || 0),
       fat: s.fat + (f.fat || 0), carbs: s.carbs + (f.carbs || 0),
     }), { calories: 0, protein: 0, fat: 0, carbs: 0 });
 
-    const rows = items.map((f) => {
+    const rows = (items || []).map((f) => {
       const ts = entryTime(f);
-      const t = new Date(ts);
-      const mm = ts > 0 ? String(t.getMinutes()).padStart(2, '0') : '--';
-      const hh = ts > 0 ? String(t.getHours()).padStart(2, '0') : '--';
-      return `<div class="meal-item tappable" onclick="editEntry('${cd}','${jsId(f.id)}')">
-        <div class="flex1">
-          <div class="t14 w500">${esc(f.name)}</div>
-          <div class="t11 faint mono">${hh}:${mm} · ${esc(f.label || '')} · ${round(f.calories)} kcal · P${round(f.protein)} F${round(f.fat)} C${round(f.carbs)}</div>
-        </div>
-        <button class="icon-btn" onclick="event.stopPropagation();removeFood('${cd}','${jsId(f.id)}')">${iconTrash}</button>
+      const d = new Date(ts);
+      const time = ts > 0 ? `${d.getHours() % 12 === 0 ? 12 : d.getHours() % 12}:${String(d.getMinutes()).padStart(2, '0')}` : '';
+      return `<div class="tl-row">
+        <div class="tl-time mono">${time}</div>
+        <button class="tl-card" onclick="editEntry('${cd}','${jsId(f.id)}')">
+          <span class="tl-emoji">${foodEmoji(f.name)}</span>
+          <span class="tl-body">
+            <span class="tl-name">${esc(f.name)}</span>
+            <span class="tl-macros mono">${round(f.calories)} cal · ${round(f.protein)}P ${round(f.fat)}F ${round(f.carbs)}C · ${esc(f.label || '')}</span>
+          </span>
+          <span class="tl-edit">${iconPencil}</span>
+        </button>
       </div>`;
     }).join('');
 
-    return `<div class="meal-group">
-      <div class="row between mb2">
-        <div class="row g2">
-          <span class="meal-hour mono">${h < 0 ? 'Untimed' : hourLabel(h)}</span>
-          <button class="meal-add" onclick="openPicker('${cd}', ${slotTimestamp(cd, h)})" title="Add to this hour">${iconPlus}</button>
-        </div>
-        <span class="t11 mono faint">${round(tot.calories)} kcal · P${round(tot.protein)} F${round(tot.fat)} C${round(tot.carbs)}</span>
+    const label = h < 0 ? 'Untimed' : hourLabel(h);
+    const slot = h < 0 ? '' : `<button class="tl-add" aria-label="Add food at ${label}" onclick="openPicker('${cd}', ${slotTimestamp(cd, Math.max(0, h))})">${iconPlus}</button>`;
+    return `<div class="tl-hour ${items && items.length ? '' : 'is-empty'}">
+      <div class="tl-hour-head">
+        <span class="tl-hour-chip mono">${label}</span>
+        ${slot}
+        ${items && items.length ? `<span class="tl-hour-tot mono">${round(tot.calories)} cal · ${round(tot.protein)}P ${round(tot.fat)}F ${round(tot.carbs)}C</span>` : ''}
       </div>
       ${rows}
     </div>`;
-  }).join('');
+  };
+
+  const blocks = hours.map((h) => hourBlock(h, byHour.get(h))).join('');
+  const untimedBlock = untimed.length ? hourBlock(-1, untimed) : '';
+  return `<div class="tl">${untimedBlock}${blocks}</div>`;
 }
 
 function jumpToDate(d) { S.currentDate = d; render(); }
