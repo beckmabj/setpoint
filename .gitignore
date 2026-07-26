@@ -1,4 +1,7 @@
 # Personal notes — kept locally, not published
 START-HERE.txt
 
+# Machine-local Claude Code settings
+.claude/settings.local.json
+
 .DS_Store
