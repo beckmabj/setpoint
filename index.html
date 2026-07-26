@@ -178,7 +178,10 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 /* modal / sheet */
 .overlay { position: fixed; top: 0; left: 0; right: 0; bottom: var(--kb-inset, 0px); background: rgba(28,35,33,0.42); z-index: 50; display: flex; align-items: flex-end; justify-content: center; transition: bottom 140ms ease; }
-.sheet { width: 100%; max-width: 480px; background: var(--paper); border-radius: 18px 18px 0 0; max-height: 86dvh; overflow-y: auto; padding: 16px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); box-shadow: 0 -8px 30px rgba(0,0,0,0.15); -webkit-overflow-scrolling: touch; }
+/* max-height is measured against the space actually left once the keyboard
+   is up, minus the status bar. A flat 86dvh let the sheet's own header slide
+   up underneath the notch when the keypad appeared. */
+.sheet { width: 100%; max-width: 480px; background: var(--paper); border-radius: 18px 18px 0 0; max-height: calc(100dvh - var(--kb-inset, 0px) - env(safe-area-inset-top) - 14px); overflow-y: auto; overscroll-behavior: contain; padding: 16px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); box-shadow: 0 -8px 30px rgba(0,0,0,0.15); -webkit-overflow-scrolling: touch; }
 
 /* Camera scanner. Lives outside #app so render() can't destroy the <video>;
    deliberately fixed dark in both themes, since it sits over a camera feed. */
