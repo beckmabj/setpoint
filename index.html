@@ -702,12 +702,38 @@ function plausibleFood(f) {
   return f.name && f.caloriesPer100 > 0 && f.caloriesPer100 <= 900;
 }
 
-// Foundation and SR Legacy are USDA's curated whole-food datasets. Surface
-// them above Branded so "banana" leads with an actual banana, not a snack bar.
+// Ranking: whole foods first, then prepared/packaged, then branded.
+//
+// Data tier alone isn't enough. USDA's curated tiers also contain restaurant
+// and snack items, so a tier sort puts "Cookies, oatmeal" above actual oats.
+// Score on the food's character as well as its source.
 const USDA_TIER = { 'Foundation': 0, 'SR Legacy': 1, 'Survey (FNDDS)': 2, 'Branded': 3 };
+
+// USDA descriptions are "Category, qualifier, qualifier". These leading
+// categories are prepared, restaurant, or confectionery foods.
+const PREPARED_PREFIXES = [
+  'restaurant,', 'fast foods,', 'fast food,', 'snacks,', 'cookies,', 'candies,',
+  'cake,', 'pie,', 'pastries,', 'crackers,', 'beverages,', 'alcoholic beverage',
+  'babyfood,', 'formulated bar', 'toppings,', 'sauces,', 'gravy,', 'soup,',
+];
+
 function usdaRank(f) {
-  const t = USDA_TIER[f.dataType];
-  return t === undefined ? 4 : t;
+  const tier = USDA_TIER[f.dataType];
+  let score = (tier === undefined ? 4 : tier) * 10;
+  const desc = String(f.name).toLowerCase();
+  if (PREPARED_PREFIXES.some((p) => desc.startsWith(p))) score += 25;
+  return score;
+}
+
+// Within a rank, prefer entries whose description *leads* with the search
+// term ("Bananas, raw") over ones that merely mention it ("Melon, banana").
+function queryAffinity(f, query) {
+  const desc = String(f.name).toLowerCase();
+  const first = String(query).toLowerCase().trim().split(/\s+/)[0];
+  if (!first) return 2;
+  if (desc.startsWith(first)) return 0;
+  if (desc.split(/,\s*/)[0].includes(first)) return 1;
+  return 2;
 }
 
 async function searchFoods(query) {
@@ -719,10 +745,10 @@ async function searchFoods(query) {
   if (!res.ok) throw new Error(`search failed: ${res.status}`);
   const data = await res.json();
   const mapped = (data.foods || []).map(mapUsdaFood).filter(plausibleFood);
-  // Stable sort: keep USDA's relevance order within each tier.
+  // Stable sort: rank, then query affinity, then USDA's own relevance order.
   return mapped
-    .map((f, i) => ({ f, i }))
-    .sort((a, b) => (usdaRank(a.f) - usdaRank(b.f)) || (a.i - b.i))
+    .map((f, i) => ({ f, i, r: usdaRank(f), a: queryAffinity(f, query) }))
+    .sort((x, y) => (x.r - y.r) || (x.a - y.a) || (x.i - y.i))
     .map((x) => x.f)
     .slice(0, 12);
 }
