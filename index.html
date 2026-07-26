@@ -201,6 +201,12 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .scan-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px calc(18px + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); }
 .scan-btn { border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.35); color: #fff; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
+/* Where a search result came from. OFF is crowdsourced, so its rows are
+   labelled rather than silently mixed in with curated USDA data. */
+.src-tag { flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; padding: 2px 6px; border-radius: 5px; margin-left: 8px; }
+.src-tag.is-usda { background: var(--green-soft); color: var(--green); }
+.src-tag.is-brand { background: var(--tan-soft); color: var(--ink-faint); }
+.src-tag.is-off { background: var(--calories-soft); color: var(--calories); }
 .dupe-group { border: 1px solid var(--line); border-radius: 10px; padding: 4px; margin-bottom: 10px; }
 .dupe-row { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; text-align: left; padding: 8px 8px; border-radius: 8px; cursor: pointer; font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
 .dupe-row + .dupe-row { border-top: 1px solid var(--line); }
@@ -1211,16 +1217,78 @@ async function usdaQuery(query, dataType, pageSize) {
   return data.foods || [];
 }
 
+// ---------------------------------------------------------------------
+// Open Food Facts — branded and store products
+//
+// USDA is the better source for whole foods; OFF is the better source for
+// the packaged, store-brand half of a real shopping basket. Searching
+// "chicken bites" or "members mark chicken" returns a thousand real products
+// from OFF and generic poultry from USDA, so both run and the results merge.
+//
+// Reaching OFF from a browser needs care, and it is easy to misread. The
+// endpoint DOES send `access-control-allow-origin: *` — but it rate-limits
+// aggressively, returning a CORS-less 503 for bursts of requests. Sampling
+// during one of those windows looks exactly like a hard CORS block. Measured
+// over repeated runs it succeeds roughly 80% of the time per attempt, so a
+// few spaced retries make it reliable, and failure is always swallowed:
+// a bad response costs branded rows, never an error.
+// ---------------------------------------------------------------------
+const OFF_HOST = 'https://world.openfoodfacts.org';
+
+async function offQuery(query, pageSize) {
+  const url = `${OFF_HOST}/cgi/search.pl?search_terms=${encodeURIComponent(query)}`
+    + `&search_simple=1&action=process&json=1&page_size=${pageSize}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 7000);
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (res.ok) return (await res.json()).products || [];
+      // 503 here is rate limiting, not refusal — back off briefly and retry.
+      if (res.status !== 503) return [];
+    } catch (err) { /* timeout or network — retry */ }
+    await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+  }
+  return [];
+}
+
+function mapOffFood(p) {
+  const n = p.nutriments || {};
+  const kcal = Number(n['energy-kcal_100g']);
+  const sq = Number(p.serving_quantity);
+  const squ = String(p.serving_quantity_unit || 'g').toLowerCase();
+  return {
+    id: `off:${p.code || p._id || p.product_name}`,
+    name: p.product_name || '',
+    brand: p.brands ? String(p.brands).split(',')[0].trim() : '',
+    dataType: 'Branded',
+    source: 'off',
+    caloriesPer100: isFinite(kcal) ? kcal : 0,
+    proteinPer100: Number(n.proteins_100g) || 0,
+    carbsPer100: Number(n.carbohydrates_100g) || 0,
+    fatPer100: Number(n.fat_100g) || 0,
+    servingGrams: (sq > 0 && (squ === 'g' || squ === 'gram' || squ === 'grams')) ? sq : null,
+  };
+}
+
 async function searchFoods(query) {
   // Two separate requests rather than one combined query. For terms like
   // "ground beef" or "whole milk", USDA's relevance ranking returns nothing
   // but Branded entries, so a single call yields no curated candidates to
   // promote no matter how deep the pool. Asking for the curated datasets
   // explicitly guarantees whole foods are always in the running.
-  const [curated, branded] = await Promise.all([
+  const [curatedR, brandedR, offR] = await Promise.allSettled([
     usdaQuery(query, 'Foundation,SR Legacy', 40),
     usdaQuery(query, 'Branded', 25),
+    offQuery(query, 25),
   ]);
+  // USDA curated is the primary source; OFF and USDA-branded are additive and
+  // never fatal.
+  if (curatedR.status === 'rejected') throw curatedR.reason;
+  const curated = curatedR.value;
+  const branded = brandedR.status === 'fulfilled' ? brandedR.value : [];
+  const offRaw = offR.status === 'fulfilled' ? offR.value : [];
   // De-dupe by fdcId, curated winning any collision.
   const seen = new Set();
   const take = (list) => list.map(mapUsdaFood).filter((f) => {
@@ -1229,6 +1297,16 @@ async function searchFoods(query) {
     return plausibleFood(f);
   });
   let mapped = take(curated.concat(branded));
+
+  // Fold OFF in, skipping products USDA already returned under the same name.
+  const haveNames = new Set(mapped.map((f) => normFoodName(f.name)));
+  offRaw.map(mapOffFood).forEach((f) => {
+    const key = normFoodName(f.name);
+    if (!f.name || !key || haveNames.has(key) || seen.has(f.id)) return;
+    if (!plausibleFood(f)) return;
+    haveNames.add(key); seen.add(f.id);
+    mapped.push(f);
+  });
 
   // USDA matches query words independently, so "chicken tenderloins" comes
   // back as pork, beef, and ostrich tenderloin with barely any chicken. When
@@ -1259,7 +1337,7 @@ async function searchFoods(query) {
     .sort((x, y) => (x.m - y.m) || (x.r - y.r)
       || ((x.a * 2 + x.s) - (y.a * 2 + y.s)) || (x.t - y.t) || (x.i - y.i))
     .map((x) => x.f)
-    .slice(0, 12);
+    .slice(0, 20);
 }
 // ---------------------------------------------------------------------
 // Onboarding
@@ -2257,8 +2335,11 @@ function renderPickerSearch() {
   ${p.status === 'empty' ? `<div class="faint t13" style="padding:8px 0;">No matches. Try a simpler term, or add it under "Custom".</div>` : ''}
   ${p.results.map((r, i) => `
     <button class="food-row" onclick="selectOffResult(${i})">
-      <div><div class="t14 w500">${esc(r.name)}</div>
-        <div class="t12 faint mono">${r.brand ? esc(r.brand) + ' · ' : ''}${round(r.caloriesPer100)} kcal · P${round(r.proteinPer100, 1)} F${round(r.fatPer100, 1)} C${round(r.carbsPer100, 1)} <span class="fainter">/100g</span></div></div>
+      <div class="flex1" style="min-width:0;">
+        <div class="t14 w500" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.name)}</div>
+        <div class="t12 faint mono" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.brand ? esc(r.brand) + ' · ' : ''}${round(r.caloriesPer100)} kcal · P${round(r.proteinPer100, 1)} F${round(r.fatPer100, 1)} C${round(r.carbsPer100, 1)} <span class="fainter">/100g</span></div>
+      </div>
+      <span class="src-tag ${r.source === 'off' ? 'is-off' : (r.dataType === 'Branded' ? 'is-brand' : 'is-usda')}">${r.source === 'off' ? 'OFF' : (r.dataType === 'Branded' ? 'Brand' : 'USDA')}</span>
     </button>`).join('')}
   `;
 }
