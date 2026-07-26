@@ -668,7 +668,7 @@ const iconEditDay = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"
 // key (instant, no cost) at https://fdc.nal.usda.gov/api-key-signup.html and
 // paste it here. This key is visible in the public repo; that is acceptable
 // for a free, rate-limited, read-only data key.
-const USDA_API_KEY = 'DEMO_KEY';
+const USDA_API_KEY = 'EDdkGrde3PUh9QN5I88VgtBcIgO8Jw3GgtX1pnBm';
 
 // USDA returns Energy twice (KCAL and kJ), so match on unit, not just name.
 function usdaNutrient(food, name, unit) {
@@ -707,7 +707,23 @@ function plausibleFood(f) {
 // Data tier alone isn't enough. USDA's curated tiers also contain restaurant
 // and snack items, so a tier sort puts "Cookies, oatmeal" above actual oats.
 // Score on the food's character as well as its source.
-const USDA_TIER = { 'Foundation': 0, 'SR Legacy': 1, 'Survey (FNDDS)': 2, 'Branded': 3 };
+// Coarse rank only. Foundation and SR Legacy share a value: both are curated
+// whole-food data and the difference is vintage, not food quality. Ranking
+// them apart here let "Flour, bread, white" (Foundation) beat "Bread, white
+// wheat" (SR Legacy) on dataset age alone. Foundation still wins ties, but as
+// a late tiebreaker in the sort, after relevance.
+const USDA_TIER = { 'Foundation': 0, 'SR Legacy': 0, 'Survey (FNDDS)': 1, 'Branded': 2 };
+const USDA_TIER_FINE = { 'Foundation': 0, 'SR Legacy': 1, 'Survey (FNDDS)': 2, 'Branded': 3 };
+
+// Prefer the plain form of a food. Between "Bananas, raw" and "Bananas,
+// dehydrated, or banana powder", you almost always want the former.
+const PROCESSED_QUALIFIERS = /\b(dehydrated|powder|dried|canned|imitation|breaded|nuggets|patties|frozen|toasted|leaves|sprouted|infant|baby)\b/;
+function formScore(f) {
+  const desc = String(f.name).toLowerCase();
+  let s = /,\s*raw\b/.test(desc) ? 0 : 1;
+  if (PROCESSED_QUALIFIERS.test(desc)) s += 3;
+  return s;
+}
 
 // USDA descriptions are "Category, qualifier, qualifier". These leading
 // categories are prepared, restaurant, or confectionery foods.
@@ -725,30 +741,77 @@ function usdaRank(f) {
   return score;
 }
 
-// Within a rank, prefer entries whose description *leads* with the search
-// term ("Bananas, raw") over ones that merely mention it ("Melon, banana").
+// Within a rank, prefer entries where the search term is the food's head noun
+// rather than a modifier. USDA writes "Category, qualifier, qualifier", so a
+// comma right after the term means the term IS the food: "Rice, white,
+// long-grain" is rice, while "Rice crackers" is a cracker. Ties then fall back
+// to how much of the query the description actually covers.
+// English compounds put the head noun last ("ground BEEF", "whole MILK",
+// "olive OIL"); USDA puts it first ("Beef, ground", "Milk, whole", "Oil,
+// olive"). So test both ends of the query against the description's head
+// segment and take whichever matches better.
 function queryAffinity(f, query) {
   const desc = String(f.name).toLowerCase();
-  const first = String(query).toLowerCase().trim().split(/\s+/)[0];
-  if (!first) return 2;
-  if (desc.startsWith(first)) return 0;
-  if (desc.split(/,\s*/)[0].includes(first)) return 1;
-  return 2;
+  const words = String(query).toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return 9;
+  const segs = desc.split(/,\s*/);
+  const head = segs[0];
+  const missing = words.filter((w) => !desc.includes(w)).length;
+  const same = (seg, w) => seg === w || seg === w + 's' || seg === w.replace(/s$/, '');
+
+  const scoreFor = (w) => {
+    if (same(head, w)) return 0;
+    // USDA files many foods under a category first ("Fish, salmon, ...",
+    // "Nuts, almonds, ..."), so the real name is often the second segment.
+    if (segs.length > 1 && same(segs[1], w)) return 1;
+    if (desc.startsWith(w)) return 2;
+    if (head.includes(w)) return 4;
+    return 6;
+  };
+  // Last word first: it's the head noun in most compound food names.
+  const base = Math.min(scoreFor(words[words.length - 1]), scoreFor(words[0]));
+  return base + Math.min(missing, 1);
 }
 
-async function searchFoods(query) {
+async function usdaQuery(query, dataType, pageSize) {
   const params = new URLSearchParams({
-    query, pageSize: '25', dataType: 'Foundation,SR Legacy,Branded', api_key: USDA_API_KEY,
+    query, pageSize: String(pageSize), dataType, api_key: USDA_API_KEY,
   });
   const res = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?${params}`);
   if (res.status === 429) throw new Error('rate-limited');
   if (!res.ok) throw new Error(`search failed: ${res.status}`);
   const data = await res.json();
-  const mapped = (data.foods || []).map(mapUsdaFood).filter(plausibleFood);
+  return data.foods || [];
+}
+
+async function searchFoods(query) {
+  // Two separate requests rather than one combined query. For terms like
+  // "ground beef" or "whole milk", USDA's relevance ranking returns nothing
+  // but Branded entries, so a single call yields no curated candidates to
+  // promote no matter how deep the pool. Asking for the curated datasets
+  // explicitly guarantees whole foods are always in the running.
+  const [curated, branded] = await Promise.all([
+    usdaQuery(query, 'Foundation,SR Legacy', 40),
+    usdaQuery(query, 'Branded', 25),
+  ]);
+  // De-dupe by fdcId, curated winning any collision.
+  const seen = new Set();
+  const mapped = curated.concat(branded)
+    .map(mapUsdaFood)
+    .filter((f) => {
+      if (seen.has(f.id)) return false;
+      seen.add(f.id);
+      return plausibleFood(f);
+    });
   // Stable sort: rank, then query affinity, then USDA's own relevance order.
   return mapped
-    .map((f, i) => ({ f, i, r: usdaRank(f), a: queryAffinity(f, query) }))
-    .sort((x, y) => (x.r - y.r) || (x.a - y.a) || (x.i - y.i))
+    .map((f, i) => ({
+      f, i, r: usdaRank(f), a: queryAffinity(f, query),
+      s: formScore(f), t: USDA_TIER_FINE[f.dataType] ?? 4,
+    }))
+    // Relevance and form are weighed together, not in sequence: a canned
+    // product that name-matches exactly should still lose to the raw food.
+    .sort((x, y) => (x.r - y.r) || ((x.a * 2 + x.s) - (y.a * 2 + y.s)) || (x.t - y.t) || (x.i - y.i))
     .map((x) => x.f)
     .slice(0, 12);
 }
