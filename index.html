@@ -227,6 +227,8 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .tl-hour-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px -46px; }
 .tl-hour-chip { font-size: 11.5px; font-weight: 600; color: var(--ink-faint); background: var(--tan-soft); border-radius: 999px; padding: 3px 9px; min-width: 52px; text-align: center; }
 .tl-hour.is-empty .tl-hour-chip { background: transparent; color: var(--ink-fainter); }
+.tl-hour.is-empty .tl-hour-head { margin-top: 2px; margin-bottom: 2px; }
+.tl-hour.is-now .tl-hour-chip { background: var(--teal-soft); color: var(--teal-deep); font-weight: 700; }
 .tl-hour-tot { margin-left: auto; font-size: 10.5px; color: var(--ink-faint); }
 .tl-add { width: 22px; height: 22px; border-radius: 999px; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-fainter); display: inline-flex; align-items: center; justify-content: center; padding: 0; position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .tl-add svg { width: 12px; height: 12px; }
@@ -1174,8 +1176,16 @@ function usdaRank(f) {
 // segment and take whichever matches better.
 // How many of the query's words the description doesn't mention at all.
 // Plural-aware: searching "tenderloins" must still match "tenderloin".
+// Matching text is name + brand. Branded products put the brand in its own
+// field — Just Bare's item is named "Lightly Breaded Chicken Breast Bites" —
+// so scoring the name alone made a search for the brand look like a total
+// mismatch and buried the right product.
+function matchText(f) {
+  return `${String(f.name || '')} ${String(f.brand || '')}`.toLowerCase();
+}
+
 function missingWords(f, query) {
-  const desc = String(f.name).toLowerCase();
+  const desc = matchText(f);
   const words = String(query).toLowerCase().trim().split(/\s+/).filter(Boolean);
   return words.filter((w) => !desc.includes(w) && !desc.includes(w.replace(/s$/, ''))).length;
 }
@@ -1184,6 +1194,10 @@ function queryAffinity(f, query) {
   const desc = String(f.name).toLowerCase();
   const words = String(query).toLowerCase().trim().split(/\s+/).filter(Boolean);
   if (!words.length) return 9;
+  const brand = String(f.brand || '').toLowerCase();
+  // A query that names the brand should reward the brand's products.
+  const brandHit = brand && words.some((w) => brand.indexOf(w) >= 0)
+    && words.filter((w) => brand.indexOf(w) >= 0).length >= Math.min(2, words.length);
   const segs = desc.split(/,\s*/);
   const head = segs[0];
   const same = (seg, w) => seg === w || seg === w + 's' || seg === w.replace(/s$/, '');
@@ -1199,7 +1213,8 @@ function queryAffinity(f, query) {
     return 6;
   };
   // Last word first: it's the head noun in most compound food names.
-  const base = Math.min(scoreFor(words[words.length - 1]), scoreFor(words[0]));
+  let base = Math.min(scoreFor(words[words.length - 1]), scoreFor(words[0]));
+  if (brandHit) base = Math.min(base, 1);
   // Missing words are weighted heavily. USDA's search treats terms as
   // independent, so "chicken tenderloins" returns pork and ostrich tenderloin;
   // an entry that ignores half the query should not outrank one that matches.
@@ -1235,7 +1250,23 @@ async function usdaQuery(query, dataType, pageSize) {
 // ---------------------------------------------------------------------
 const OFF_HOST = 'https://world.openfoodfacts.org';
 
+// OFF's full-text search narrows hard with each extra word: "just bare"
+// returns 94 real products, "just bare chicken" returns none. Brand-style
+// queries are usually the first word or two, so fall back to a shorter phrase
+// rather than showing nothing.
 async function offQuery(query, pageSize) {
+  const words = String(query).trim().split(/\s+/).filter(Boolean);
+  const attempts = [query];
+  if (words.length > 2) attempts.push(words.slice(0, 2).join(' '));
+  if (words.length > 1) attempts.push(words[0]);
+  for (const term of attempts) {
+    const found = await offFetch(term, pageSize);
+    if (found.length) return found;
+  }
+  return [];
+}
+
+async function offFetch(query, pageSize) {
   const url = `${OFF_HOST}/cgi/search.pl?search_terms=${encodeURIComponent(query)}`
     + `&search_simple=1&action=process&json=1&page_size=${pageSize}`;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -2020,18 +2051,12 @@ function renderMealTimeline(cd, dayLog) {
     byHour.get(h).push(f);
   });
 
-  // Hour range: cover everything logged, extend to now on today, and always
-  // leave a couple of empty slots ahead to add into.
-  const logged = Array.from(byHour.keys());
-  const nowH = new Date().getHours();
-  let startH = logged.length ? Math.min(...logged) : (isToday ? Math.max(0, nowH - 2) : 7);
-  let endH = logged.length ? Math.max(...logged) : startH;
-  if (isToday) endH = Math.max(endH, nowH);
-  endH = Math.min(23, endH + 2);
-  if (!logged.length && !isToday) endH = Math.min(23, startH + 12);
-
+  // The whole day, midnight to 11 PM. A window around what's already logged
+  // meant you couldn't go back and add breakfast after logging dinner, which
+  // is exactly when you need to. Empty hours render as a single compact row.
   const hours = [];
-  for (let h = startH; h <= endH; h++) hours.push(h);
+  for (let h = 0; h <= 23; h++) hours.push(h);
+  const nowH = new Date().getHours();
 
   const hourBlock = (h, items) => {
     const tot = (items || []).reduce((s, f) => ({
@@ -2058,7 +2083,7 @@ function renderMealTimeline(cd, dayLog) {
 
     const label = h < 0 ? 'Untimed' : hourLabel(h);
     const slot = h < 0 ? '' : `<button class="tl-add" aria-label="Add food at ${label}" onclick="openPicker('${cd}', ${slotTimestamp(cd, Math.max(0, h))})">${iconPlus}</button>`;
-    return `<div class="tl-hour ${items && items.length ? '' : 'is-empty'}">
+    return `<div class="tl-hour ${items && items.length ? '' : 'is-empty'} ${isToday && h === nowH ? 'is-now' : ''}">
       <div class="tl-hour-head">
         <span class="tl-hour-chip mono">${label}</span>
         ${slot}
