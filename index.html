@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Setpoint">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#15181A">
+<title>Setpoint</title>
+<link id="manifest-link" rel="manifest">
+<link id="apple-icon-link" rel="apple-touch-icon">
+<link id="favicon-link" rel="icon">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --paper: #FAFAF7;
+  --paper-raised: #FFFFFF;
+  --ink: #1C2321;
+  --ink-faint: #7A7D77;
+  --ink-fainter: #A5A79F;
+  --line: #E4E0D6;
+  --line-strong: #D4CFC2;
+  --teal: #2D5D5E;
+  --teal-deep: #1F4344;
+  --teal-soft: #E1EBEA;
+  --tan: #B8AF9E;
+  --tan-soft: #F0EBE1;
+  --brick: #B75139;
+  --brick-soft: #F5E4DE;
+  --green: #4C7A51;
+  --green-soft: #E6EDE3;
+  --amber: #C99A2E;
+  --amber-soft: #F5ECD6;
+  --carbs: #7B5EA7;
+  --carbs-soft: #EEE8F5;
+  --calories: #3E6FD9;
+  --calories-soft: #E4EBFA;
+  --accent-solid: #2D5D5E;
+}
+:root[data-theme="dark"] {
+  --paper: #15181A;
+  --paper-raised: #1E2225;
+  --ink: #F1F0EA;
+  --ink-faint: #9A9D96;
+  --ink-fainter: #676B65;
+  --line: #2B2F2E;
+  --line-strong: #383D3B;
+  --teal: #5FA8A6;
+  --teal-deep: #9AD1CF;
+  --teal-soft: #1E3536;
+  --tan: #93897A;
+  --tan-soft: #26241F;
+  --brick: #E08469;
+  --brick-soft: #3B241D;
+  --green: #7FB584;
+  --green-soft: #1F2C1F;
+  --amber: #E8B94A;
+  --amber-soft: #372A10;
+  --carbs: #B39BD6;
+  --carbs-soft: #2A2438;
+  --calories: #6C93E8;
+  --calories-soft: #1E2638;
+  --accent-solid: #2D5D5E;
+}
+html { background: var(--paper); }
+body, .card, .sheet, .nav-bar, #toast { transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease; }
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; background: var(--paper); color: var(--ink);
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+button, input, select, textarea { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
+
+#app { max-width: 480px; margin: 0 auto; padding: 18px 16px 96px; position: relative; min-height: 100vh; }
+.mono { font-family: 'IBM Plex Mono', monospace; }
+
+/* layout helpers */
+.row { display: flex; align-items: center; }
+.col { display: flex; flex-direction: column; }
+.between { justify-content: space-between; }
+.center { justify-content: center; align-items: center; }
+.wrap { flex-wrap: wrap; }
+.g1 { gap: 4px; } .g2 { gap: 8px; } .g3 { gap: 12px; } .g4 { gap: 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.flex1 { flex: 1; }
+.mt1{margin-top:4px;} .mt2{margin-top:8px;} .mt3{margin-top:12px;} .mt4{margin-top:16px;}
+.mb1{margin-bottom:4px;} .mb2{margin-bottom:8px;} .mb3{margin-bottom:12px;} .mb4{margin-bottom:16px;}
+
+/* text */
+.faint { color: var(--ink-faint); }
+.fainter { color: var(--ink-fainter); }
+.t10{font-size:10px;} .t11{font-size:11px;} .t12{font-size:12px;} .t13{font-size:13px;}
+.t14{font-size:14px;} .t15{font-size:15px;} .t16{font-size:16px;}
+.w500{font-weight:500;} .w600{font-weight:600;} .w700{font-weight:700;}
+
+/* surfaces */
+.card { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+.card.tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 12px; }
+.pill-toggle { display: flex; background: var(--tan-soft); border-radius: 10px; padding: 3px; }
+.pill-toggle button { flex: 1; border: none; background: transparent; padding: 8px 0; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; color: var(--ink-faint); }
+.pill-toggle button.active { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+/* buttons */
+.btn { border: none; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.btn-primary { background: var(--accent-solid); color: #fff; }
+.btn-dark { background: #1C2321; color: #fff; }
+.btn-outline { background: transparent; border: 1px solid var(--line); color: var(--ink-faint); }
+.btn-block { width: 100%; }
+.btn-sm { padding: 7px 12px; font-size: 13px; border-radius: 8px; }
+.icon-btn { background: none; border: none; color: var(--ink-fainter); cursor: pointer; padding: 4px; display: flex; }
+.ghost-btn { background: var(--tan-soft); border: none; border-radius: 8px; padding: 7px; color: var(--ink); cursor: pointer; display: flex; }
+
+/* inputs */
+label.field { display: flex; flex-direction: column; gap: 4px; }
+label.field span { color: var(--ink-faint); font-size: 12px; }
+.input, select.input {
+  font-family: 'IBM Plex Mono', monospace; background: var(--paper); border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 11px; font-size: 14px; color: var(--ink); width: 100%;
+}
+select.input { font-family: 'IBM Plex Sans', sans-serif; }
+.input.sans { font-family: 'IBM Plex Sans', sans-serif; }
+
+/* progress bars */
+.bar-track { border-radius: 999px; height: 8px; width: 100%; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 999px; transition: width 300ms ease; }
+
+/* top app bar */
+.app-title { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 19px; letter-spacing: -0.02em; }
+
+/* bottom nav */
+.nav-bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--paper-raised); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); z-index: 30; }
+.nav-inner { max-width: 480px; margin: 0 auto; display: flex; align-items: center; }
+.nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 0 10px; background: none; border: none; color: var(--ink-fainter); cursor: pointer; }
+.nav-item.active { color: var(--teal); }
+.nav-item span { font-size: 10.5px; font-weight: 500; }
+.nav-item.active span { font-weight: 600; }
+.nav-fab { width: 46px; height: 46px; border-radius: 50%; background: var(--accent-solid); color: #fff; border: none; display: flex; align-items: center; justify-content: center; margin-top: -20px; box-shadow: 0 4px 12px rgba(45,93,94,0.35); cursor: pointer; }
+
+/* weekly day strip */
+.day-strip { display: flex; justify-content: space-between; gap: 4px; }
+.day-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+.day-label { font-size: 10.5px; color: var(--ink-fainter); }
+.day-ring-wrap { position: relative; width: 34px; height: 34px; }
+.day-ring-wrap svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.day-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-family: 'IBM Plex Mono', monospace; }
+.day-cell.selected .day-num { font-weight: 700; }
+.day-cell button.day-btn { background: none; border: none; padding: 0; cursor: pointer; }
+
+/* nutrition strip (dashboard) */
+.nstrip-row { display: flex; align-items: flex-end; gap: 4px; height: 46px; margin-bottom: 6px; }
+.nstrip-col { flex: 1; display: flex; align-items: flex-end; justify-content: center; height: 100%; }
+.nstrip-bar { width: 9px; border-radius: 4px; min-height: 4px; }
+.nstrip-daylabel { flex: 1; text-align: center; font-size: 10.5px; color: var(--ink-fainter); }
+.nstrip-today { outline: 1.5px solid var(--teal); outline-offset: 2px; border-radius: 8px; }
+
+/* streak grid */
+.streak-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+.streak-dot { aspect-ratio: 1; border-radius: 4px; background: var(--tan-soft); }
+.streak-dot.on { background: var(--teal); }
+
+/* modal / sheet */
+.overlay { position: fixed; inset: 0; background: rgba(28,35,33,0.42); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: 100%; max-width: 480px; background: var(--paper); border-radius: 18px 18px 0 0; max-height: 86vh; overflow-y: auto; padding: 16px; box-shadow: 0 -8px 30px rgba(0,0,0,0.15); }
+@media (min-width: 480px) { .overlay { align-items: center; } .sheet { border-radius: 18px; max-height: 80vh; } }
+
+/* food picker tabs reuse .pill-toggle */
+.food-row { display: flex; align-items: center; justify-content: space-between; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; text-align: left; width: 100%; }
+.food-row + .food-row { margin-top: 6px; }
+.macro-tile { background: var(--tan-soft); border-radius: 8px; padding: 7px 0; text-align: center; }
+.macro-tile .v { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 14px; }
+.macro-tile .l { font-size: 10.5px; color: var(--ink-faint); }
+
+/* empty state */
+.empty { text-align: center; color: var(--ink-faint); font-size: 13.5px; padding: 24px 16px; }
+
+/* toast */
+#toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px); background: #1C2321; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 80; opacity: 0; transition: all 220ms ease; pointer-events: none; }
+
+/* shortcuts sheet */
+.shortcut-grid { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
+.shortcut-btn { display: flex; flex-direction: column; align-items: center; gap: 7px; background: none; border: none; cursor: pointer; flex: 1; -webkit-tap-highlight-color: transparent; }
+.shortcut-circle { width: 52px; height: 52px; border-radius: 50%; background: var(--tan-soft); display: flex; align-items: center; justify-content: center; color: var(--ink); }
+.shortcut-btn span { font-size: 11.5px; color: var(--ink-faint); }
+.shortcut-row { display: flex; align-items: center; gap: 12px; padding: 13px 2px; border-bottom: 1px solid var(--line); background: none; border-left: none; border-right: none; border-top: none; width: 100%; text-align: left; cursor: pointer; color: var(--ink); }
+.shortcut-row:last-child { border-bottom: none; }
+.shortcut-row.disabled { opacity: 0.4; cursor: default; }
+.shortcut-row .icon-wrap { width: 22px; display: flex; justify-content: center; color: var(--ink-faint); }
+.shortcut-row .grow { flex: 1; font-size: 14.5px; }
+.soon-chip { font-size: 10px; background: var(--tan-soft); color: var(--ink-faint); padding: 2px 7px; border-radius: 999px; }
+
+/* dashboard carousel */
+.dash-carousel-wrap { margin-bottom: 14px; }
+.dash-carousel { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.dash-carousel::-webkit-scrollbar { display: none; }
+.dash-page { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; }
+.dash-page .card { margin-bottom: 0; }
+.dash-dots { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
+.dash-dot { width: 6px; height: 6px; border-radius: 3px; background: var(--line-strong); border: none; padding: 0; cursor: pointer; transition: all 180ms ease; }
+.dash-dot.active { background: var(--ink-faint); width: 16px; }
+
+/* big ring (Daily Nutrition page) */
+.big-ring-wrap { position: relative; width: 164px; height: 164px; flex-shrink: 0; }
+.big-ring-wrap svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.big-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+<script>
+(function() {
+  try {
+    var raw = localStorage.getItem('setpoint:theme');
+    var pref = raw ? JSON.parse(raw) : 'dark';
+    var isDark = pref === 'dark' || (pref === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+})();
+</script>
+</head>
+<body>
+<div id="app">Loading…</div>
+<div id="toast"></div>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+  import {
+    getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
+    signInWithEmailAndPassword, signOut, sendPasswordResetEmail,
+  } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
+  import {
+    getFirestore, doc, getDoc, setDoc,
+  } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDujgRY5OXTcPVojR1Cr1v7DMcSsioSx7k",
+    authDomain: "setpoint-f9948.firebaseapp.com",
+    projectId: "setpoint-f9948",
+    storageBucket: "setpoint-f9948.firebasestorage.app",
+    messagingSenderId: "957285099675",
+    appId: "1:957285099675:web:7fae7e5cada7bd1f507e3e",
+  };
+
+  const fbApp = initializeApp(firebaseConfig);
+  const fbAuth = getAuth(fbApp);
+  const fbDb = getFirestore(fbApp);
+
+  window.FB = {
+    createUser: (email, pw) => createUserWithEmailAndPassword(fbAuth, email, pw),
+    signIn: (email, pw) => signInWithEmailAndPassword(fbAuth, email, pw),
+    signOutUser: () => signOut(fbAuth),
+    resetPassword: (email) => sendPasswordResetEmail(fbAuth, email),
+    getUserDoc: (uid) => getDoc(doc(fbDb, 'users', uid)),
+    setUserDoc: (uid, data) => setDoc(doc(fbDb, 'users', uid), data, { merge: true }),
+  };
+
+  onAuthStateChanged(fbAuth, (user) => {
+    if (window.onAuthReady) window.onAuthReady(user);
+  });
+</script>
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------
+// Local device storage — theme preference ONLY. Everything else (profile,
+// targets, logs, saved foods) now lives in Firestore, tied to the signed-in
+// account, so it syncs across devices and isn't lost if this browser's
+// storage is cleared.
+// ---------------------------------------------------------------------
+const NS = 'setpoint:';
+function readKey(k) {
+  try {
+    const v = localStorage.getItem(NS + k);
+    return v ? JSON.parse(v) : null;
+  } catch (e) { console.error('read failed', k, e); return null; }
+}
+function writeKey(k, v) {
+  try { localStorage.setItem(NS + k, JSON.stringify(v)); return true; }
+  catch (e) { console.error('write failed', k, e); toast('Could not save — storage may be full.'); return false; }
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+// ---------------------------------------------------------------------
+// Date / math helpers
+// ---------------------------------------------------------------------
+function todayKey(d) {
+  d = d || new Date();
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function addDays(dateKey, delta) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + delta);
+  return todayKey(dt);
+}
+function daysBetween(a, b) {
+  const [ay, am, ad] = a.split('-').map(Number), [by, bm, bd] = b.split('-').map(Number);
+  return Math.round((new Date(by, bm - 1, bd) - new Date(ay, am - 1, ad)) / 86400000);
+}
+function weekdayIdx(dateKey) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return (new Date(y, m - 1, d).getDay() + 6) % 7; // 0 = Monday
+}
+function startOfWeek(dateKey) { return addDays(dateKey, -weekdayIdx(dateKey)); }
+function formatDateLabel(dateKey) {
+  const t = todayKey();
+  if (dateKey === t) return 'Today';
+  if (dateKey === addDays(t, -1)) return 'Yesterday';
+  if (dateKey === addDays(t, 1)) return 'Tomorrow';
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+function formatShort(dateKey) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+function dayOfMonth(dateKey) { return Number(dateKey.split('-')[2]); }
+function round(n, p) { p = p || 0; const f = Math.pow(10, p); return Math.round((n + Number.EPSILON) * f) / f; }
+function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function bmrMifflin(p) {
+  const kg = p.weightLbs / 2.20462, cm = p.heightIn * 2.54;
+  const base = 10 * kg + 6.25 * cm - 5 * p.age;
+  return p.sex === 'male' ? base + 5 : base - 161;
+}
+const ACTIVITY = {
+  sedentary: { label: 'Sedentary (desk job, little exercise)', mult: 1.2 },
+  light: { label: 'Light activity (1-3 workouts/week)', mult: 1.375 },
+  moderate: { label: 'Moderate activity (3-5 workouts/week)', mult: 1.55 },
+  active: { label: 'Active (6-7 workouts/week)', mult: 1.725 },
+  veryactive: { label: 'Very active (physical job + training)', mult: 1.9 },
+};
+
+function computeTrendSeries(points, alpha) {
+  alpha = alpha || 0.12;
+  let ema = null;
+  return points.map((p) => { ema = ema === null ? p.weight : alpha * p.weight + (1 - alpha) * ema; return Object.assign({}, p, { trend: round(ema, 1) }); });
+}
+function linRegSlope(points) {
+  const n = points.length;
+  if (n < 2) return 0;
+  let sx = 0, sy = 0, sxy = 0, sxx = 0;
+  points.forEach(({ x, y }) => { sx += x; sy += y; sxy += x * y; sxx += x * x; });
+  const denom = n * sxx - sx * sx;
+  return denom === 0 ? 0 : (n * sxy - sx * sy) / denom;
+}
+function dayTotals(dayLog) {
+  const foods = (dayLog && dayLog.foods) || [];
+  return foods.reduce((a, f) => ({
+    calories: a.calories + (f.calories || 0), protein: a.protein + (f.protein || 0),
+    carbs: a.carbs + (f.carbs || 0), fat: a.fat + (f.fat || 0),
+  }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+}
+
+function estimateFromFormula(profile) {
+  const bmr = bmrMifflin(profile);
+  const tdee = bmr * ACTIVITY[profile.activityLevel].mult;
+  const desiredDailyBalance = (profile.goalRateLbsPerWeek * 3500) / 7;
+  const targetCalories = Math.max(tdee + desiredDailyBalance, 1200);
+  const proteinG = profile.proteinPerLb * profile.weightLbs;
+  const fatG = (targetCalories * profile.fatPercent) / 9;
+  const carbsG = Math.max(0, (targetCalories - proteinG * 4 - fatG * 9) / 4);
+  return { ok: true, source: 'formula', calories: round(targetCalories), protein: round(proteinG), fat: round(fatG), carbs: round(carbsG), estimatedTDEE: round(tdee), date: todayKey() };
+}
+
+function estimateFromData(logs, profile, windowSize, minDays) {
+  windowSize = windowSize || 14; minDays = minDays || 7;
+  const dateKeys = Object.keys(logs).sort();
+  const withWeight = dateKeys.filter((k) => logs[k].weightLbs != null).map((k) => ({ date: k, weight: logs[k].weightLbs }));
+  if (withWeight.length < 2) return { ok: false, reason: 'noweight', daysLogged: 0 };
+  const trendSeries = computeTrendSeries(withWeight);
+  const trendByDate = Object.fromEntries(trendSeries.map((p) => [p.date, p.trend]));
+
+  const windowEnd = dateKeys[dateKeys.length - 1];
+  const windowStart = addDays(windowEnd, -(windowSize - 1));
+  const windowDays = dateKeys.filter((k) => k >= windowStart && k <= windowEnd && logs[k].weightLbs != null && logs[k].foods && logs[k].foods.length > 0);
+  if (windowDays.length < minDays) return { ok: false, reason: 'need', daysLogged: windowDays.length, minDays };
+
+  const regressionPoints = windowDays.map((k) => ({ x: daysBetween(windowDays[0], k), y: trendByDate[k] }));
+  const slopePerDay = linRegSlope(regressionPoints);
+  const weeklyRateActual = slopePerDay * 7;
+  const avgIntake = windowDays.reduce((s, k) => s + dayTotals(logs[k]).calories, 0) / windowDays.length;
+  const span = daysBetween(windowDays[0], windowDays[windowDays.length - 1]) || 1;
+  const totalWeightChange = slopePerDay * span;
+  const estimatedTDEE = avgIntake - (totalWeightChange * 3500) / span;
+  const currentTrendWeight = trendByDate[dateKeys[dateKeys.length - 1]] ?? profile.weightLbs;
+  const desiredDailyBalance = (profile.goalRateLbsPerWeek * 3500) / 7;
+  const targetCalories = Math.max(estimatedTDEE + desiredDailyBalance, 1200);
+  const proteinG = profile.proteinPerLb * currentTrendWeight;
+  const fatG = (targetCalories * profile.fatPercent) / 9;
+  const carbsG = Math.max(0, (targetCalories - proteinG * 4 - fatG * 9) / 4);
+
+  return {
+    ok: true, source: 'data', calories: round(targetCalories), protein: round(proteinG), fat: round(fatG), carbs: round(carbsG),
+    estimatedTDEE: round(estimatedTDEE), weeklyRateActual: round(weeklyRateActual, 2), daysUsed: windowDays.length,
+    currentTrendWeight: round(currentTrendWeight, 1), avgIntake: round(avgIntake), date: todayKey(),
+  };
+}
+
+// ---------------------------------------------------------------------
+// Tiny inline SVG chart builders (no chart library — kept dependency-free)
+// CSS variables aren't reliably resolved inside raw SVG attributes across
+// browsers, so these use plain hex values matching the CSS custom properties.
+// ---------------------------------------------------------------------
+const COLOR_LIGHT = { ink: '#1C2321', line: '#E4E0D6', lineStrong: '#D4CFC2', teal: '#2D5D5E', tan: '#B8AF9E', brick: '#B75139', green: '#4C7A51', amber: '#C99A2E', carbs: '#7B5EA7', calories: '#3E6FD9' };
+const COLOR_DARK = { ink: '#F1F0EA', line: '#2B2F2E', lineStrong: '#383D3B', teal: '#5FA8A6', tan: '#93897A', brick: '#E08469', green: '#7FB584', amber: '#E8B94A', carbs: '#B39BD6', calories: '#6C93E8' };
+let currentTheme = 'dark';
+function colors() { return currentTheme === 'dark' ? COLOR_DARK : COLOR_LIGHT; }
+const COLOR = new Proxy({}, { get(_, key) { return colors()[key]; } });
+function svgSparkline(values, opts) {
+  opts = opts || {};
+  const w = opts.w || 120, h = opts.h || 36, color = opts.color || COLOR.teal;
+  if (!values.length) return `<svg width="${w}" height="${h}"></svg>`;
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = (max - min) || 1;
+  const step = values.length > 1 ? w / (values.length - 1) : 0;
+  const pts = values.map((v, i) => `${round(i * step, 1)},${round(h - ((v - min) / range) * (h - 6) - 3, 1)}`);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+function svgTrendChart(rawPoints, trendPoints, opts) {
+  opts = opts || {};
+  const w = opts.w || 320, h = opts.h || 160, pad = 8;
+  if (trendPoints.length < 1) return `<svg width="${w}" height="${h}"></svg>`;
+  const all = rawPoints.concat(trendPoints);
+  const min = Math.min(...all) - 1.5, max = Math.max(...all) + 1.5;
+  const range = (max - min) || 1;
+  const n = trendPoints.length;
+  const step = n > 1 ? (w - pad * 2) / (n - 1) : 0;
+  const x = (i) => round(pad + i * step, 1);
+  const y = (v) => round(h - pad - ((v - min) / range) * (h - pad * 2), 1);
+  const trendLine = trendPoints.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+  const dots = rawPoints.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="2.4" fill="${COLOR.tan}"/>`).join('');
+  const gridY = [0, 0.5, 1].map((f) => round(pad + f * (h - pad * 2), 1));
+  const grid = gridY.map((gy) => `<line x1="0" y1="${gy}" x2="${w}" y2="${gy}" stroke="${COLOR.line}" stroke-width="1"/>`).join('');
+  return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    ${grid}
+    ${dots}
+    <polyline points="${trendLine}" fill="none" stroke="${COLOR.teal}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+function svgBarChart(values, opts) {
+  opts = opts || {};
+  const w = opts.w || 320, h = opts.h || 100, pad = 4;
+  if (!values.length) return `<svg width="${w}" height="${h}"></svg>`;
+  const maxAbs = Math.max(1, ...values.map((v) => Math.abs(v)));
+  const zeroY = h / 2;
+  const bw = (w - pad * 2) / values.length;
+  const bars = values.map((v, i) => {
+    const barH = (Math.abs(v) / maxAbs) * (h / 2 - 8);
+    const bx = round(pad + i * bw + bw * 0.2, 1);
+    const bwActual = round(bw * 0.6, 1);
+    const by = v >= 0 ? round(zeroY - barH, 1) : zeroY;
+    const color = v > 0 ? COLOR.amber : COLOR.teal;
+    return `<rect x="${bx}" y="${by}" width="${bwActual}" height="${round(barH, 1)}" rx="2" fill="${color}"/>`;
+  }).join('');
+  return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <line x1="0" y1="${zeroY}" x2="${w}" y2="${zeroY}" stroke="${COLOR.lineStrong}" stroke-width="1"/>
+    ${bars}
+  </svg>`;
+}
+
+function svgRing(pct, opts) {
+  opts = opts || {};
+  const size = opts.size || 34, stroke = opts.stroke || 3.5, color = opts.color || COLOR.teal;
+  const r = (size - stroke) / 2, c = size / 2, circ = 2 * Math.PI * r;
+  const filled = clamp(pct, 0, 1) * circ;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${COLOR.line}" stroke-width="${stroke}"/>
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}"
+      stroke-dasharray="${round(filled, 1)} ${round(circ, 1)}" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function svgBarWithReference(values, refValue, opts) {
+  opts = opts || {};
+  const w = opts.w || 320, h = opts.h || 108, pad = 4;
+  if (!values.length) return `<svg width="${w}" height="${h}"></svg>`;
+  const maxVal = Math.max(refValue, ...values, 1) * 1.15;
+  const bw = (w - pad * 2) / values.length;
+  const bars = values.map((v, i) => {
+    const barH = Math.max(v > 0 ? 2 : 0, (v / maxVal) * (h - 10));
+    const bx = round(pad + i * bw + bw * 0.15, 1);
+    const bwActual = round(bw * 0.7, 1);
+    const by = round(h - barH, 1);
+    return `<rect x="${bx}" y="${by}" width="${bwActual}" height="${round(barH, 1)}" rx="1.5" fill="${COLOR.calories}"/>`;
+  }).join('');
+  const refY = round(h - (refValue / maxVal) * (h - 10), 1);
+  return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    ${bars}
+    <line x1="0" y1="${refY}" x2="${w}" y2="${refY}" stroke="${COLOR.amber}" stroke-width="1.5" stroke-dasharray="3,3"/>
+  </svg>`;
+}
+
+// ---------------------------------------------------------------------
+// Global state
+// ---------------------------------------------------------------------
+const S = {
+  authLoading: true,
+  authUser: null,
+  authMode: 'signin',
+  authError: null,
+  authBusy: false,
+  authConnectError: false,
+  profile: null,
+  targets: null,
+  logs: {},
+  savedFoods: [],
+  activeTab: 'dashboard',
+  currentDate: todayKey(),
+  dashMode: 'remaining',
+  dashPage: 0,
+  energyMode: 'targets',
+  expanded: {},
+  picker: null,
+  shortcuts: null,
+  barcode: null,
+};
+let currentUid = null;
+
+async function persistLogs() { await saveField('logs', S.logs); }
+async function persistSavedFoods() { await saveField('savedFoods', S.savedFoods); }
+async function persistProfile() { await saveField('profile', S.profile); }
+async function persistTargets() { await saveField('targets', S.targets); }
+async function saveField(key, value) {
+  if (!currentUid) return;
+  try { await window.FB.setUserDoc(currentUid, { [key]: value }); }
+  catch (e) { console.error('save failed', key, e); toast('Could not save to your account — check your connection.'); }
+}
+
+function getDayLog(dateKey) { return S.logs[dateKey] || { weightLbs: null, foods: [] }; }
+function setDayLog(dateKey, next) { S.logs = Object.assign({}, S.logs, { [dateKey]: next }); persistLogs(); }
+
+// ---------------------------------------------------------------------
+// Auth-gated boot: wait for Firebase to report sign-in state, then load
+// that account's data from Firestore before rendering the app.
+// ---------------------------------------------------------------------
+window.onAuthReady = async function (user) {
+  S.authLoading = false;
+  S.authUser = user;
+  if (!user) {
+    currentUid = null; S.profile = null; S.targets = null; S.logs = {}; S.savedFoods = [];
+    render(); return;
+  }
+  currentUid = user.uid;
+  try {
+    const snap = await window.FB.getUserDoc(user.uid);
+    if (snap.exists()) {
+      const data = snap.data();
+      S.profile = data.profile || null;
+      S.targets = data.targets || null;
+      S.logs = data.logs || {};
+      S.savedFoods = data.savedFoods || [];
+    } else {
+      // Brand new account — check for pre-existing local data from before
+      // Firebase was added, and offer it a home instead of losing it.
+      const localProfile = readKey('profile');
+      if (localProfile) {
+        S.profile = localProfile;
+        S.targets = readKey('targets');
+        S.logs = readKey('logs') || {};
+        S.savedFoods = readKey('savedFoods') || [];
+        await window.FB.setUserDoc(user.uid, { profile: S.profile, targets: S.targets, logs: S.logs, savedFoods: S.savedFoods });
+        toast('Imported your existing data into this account');
+      }
+    }
+  } catch (e) {
+    console.error('load failed', e);
+    toast('Could not load your data — check your connection.');
+  }
+  render();
+};
+
+function render() {
+  const app = document.getElementById('app');
+  if (S.authLoading) { app.innerHTML = renderAuthLoading(); return; }
+  if (!S.authUser) { app.innerHTML = renderAuthScreen(); return; }
+  if (!S.profile || !S.targets) { app.innerHTML = renderOnboarding(); return; }
+  app.innerHTML = `
+    ${renderTopBar()}
+    <div id="tab-content">${renderActiveTab()}</div>
+    ${renderNav()}
+    ${S.picker ? renderPicker() : ''}
+    ${S.shortcuts ? renderShortcuts() : ''}
+    ${S.barcode ? renderBarcodeSheet() : ''}
+  `;
+  if (S.activeTab === 'dashboard') setTimeout(setupDashCarousel, 0);
+}
+function renderTopBar() {
+  return `<div class="row between mb4"><span class="app-title">Setpoint</span></div>`;
+}
+function renderActiveTab() {
+  if (S.activeTab === 'dashboard') return renderDashboard();
+  if (S.activeTab === 'log') return renderLog();
+  if (S.activeTab === 'strategy') return renderStrategy();
+  if (S.activeTab === 'more') return renderMore();
+  return '';
+}
+function renderNav() {
+  const tabs = [
+    { key: 'dashboard', label: 'Dashboard', icon: iconGrid },
+    { key: 'log', label: 'Log', icon: iconUtensils },
+    { key: '__fab__', label: '', icon: null },
+    { key: 'strategy', label: 'Strategy', icon: iconTarget },
+    { key: 'more', label: 'More', icon: iconDots },
+  ];
+  return `<div class="nav-bar"><div class="nav-inner">
+    ${tabs.map((t) => {
+      if (t.key === '__fab__') return `<button class="nav-fab" onclick="openShortcuts()">${iconPlus}</button>`;
+      const active = S.activeTab === t.key;
+      return `<button class="nav-item ${active ? 'active' : ''}" onclick="setTab('${t.key}')">${t.icon}<span>${t.label}</span></button>`;
+    }).join('')}
+  </div></div>`;
+}
+function setTab(key) { S.activeTab = key; render(); }
+window.setTab = setTab;
+
+// ---------------------------------------------------------------------
+// Minimal inline icon set (kept dependency-free, no icon library)
+// ---------------------------------------------------------------------
+const iconGrid = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`;
+const iconUtensils = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v7a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V3M8 12v9M17 3c-1.7 0-3 2-3 5s1.3 5 3 5 3-2 3-5-1.3-5-3-5zM17 12v9"/></svg>`;
+const iconTarget = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>`;
+const iconDots = `<svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>`;
+const iconPlus = `<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
+const iconChevronL = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`;
+const iconChevronR = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`;
+const iconClose = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+const iconTrash = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>`;
+const iconScale = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 7v5l3 2"/></svg>`;
+const iconSearch = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>`;
+const iconBarcode = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5v14M7 5v14M10 5v14M13 5v14M15 5v14M18 5v14M21 5v14" stroke-width="1.6"/></svg>`;
+const iconZap = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>`;
+const iconChefHat = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19h12M7 19v-6.2a5 5 0 0 1-2-4c0-2.8 2.2-5 5-5 .7 0 1.4.2 2 .4A5 5 0 0 1 21 8.8c0 1.8-1 3.4-2 4.2V19"/></svg>`;
+const iconEditDay = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13l3 3v13H4z"/><path d="M8 4v6h8V4M8 14h8"/></svg>`;
+
+async function searchOpenFoodFacts(query) {
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=15`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('search failed');
+  const data = await res.json();
+  return (data.products || [])
+    .filter((p) => p.product_name && p.nutriments && p.nutriments['energy-kcal_100g'] != null)
+    .map((p) => ({
+      id: p.code || `${p.product_name}-${Math.random()}`, name: p.product_name,
+      brand: p.brands ? p.brands.split(',')[0].trim() : '',
+      caloriesPer100: p.nutriments['energy-kcal_100g'] || 0, proteinPer100: p.nutriments['proteins_100g'] || 0,
+      carbsPer100: p.nutriments['carbohydrates_100g'] || 0, fatPer100: p.nutriments['fat_100g'] || 0,
+    })).slice(0, 12);
+}
+// ---------------------------------------------------------------------
+// Onboarding
+// ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Auth screens (sign in / create account)
+// ---------------------------------------------------------------------
+function renderAuthLoading() {
+  return `<div class="col center" style="min-height:100vh;"><div class="faint t13">Loading…</div></div>`;
+}
+
+const AUTH_ERROR_MESSAGES = {
+  'auth/invalid-email': "That email address doesn't look right.",
+  'auth/user-not-found': 'No account with that email — try creating one instead.',
+  'auth/wrong-password': 'Wrong password. Try again, or reset it below.',
+  'auth/invalid-credential': 'Email or password is incorrect.',
+  'auth/email-already-in-use': 'An account already exists with that email — sign in instead.',
+  'auth/weak-password': 'Password should be at least 6 characters.',
+  'auth/missing-password': 'Enter a password.',
+  'auth/too-many-requests': 'Too many attempts — wait a bit and try again.',
+  'auth/network-request-failed': 'Network error — check your connection.',
+};
+function friendlyAuthError(err) {
+  return AUTH_ERROR_MESSAGES[err && err.code] || 'Something went wrong. Please try again.';
+}
+
+function renderAuthScreen() {
+  const isSignup = S.authMode === 'signup';
+  if (S.authConnectError) {
+    return `
+    <div class="col center" style="min-height:100vh; padding: 24px 16px;">
+      <div style="width:100%; max-width:380px;">
+        <div class="col center mb4" style="text-align:center;">
+          <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Setpoint</div>
+        </div>
+        <div class="card">
+          <div class="w600 t14 mb2">Couldn't connect</div>
+          <div class="faint t13" style="line-height:1.6;">Setpoint couldn't reach the sign-in service. This usually means you're offline or the connection was blocked. Check your connection and reload the page.</div>
+          <button class="btn btn-primary btn-block mt3" onclick="location.reload()">Reload</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  return `
+  <div class="col center" style="min-height:100vh; padding: 24px 16px;">
+    <div style="width:100%; max-width:380px;">
+      <div class="col center mb4" style="text-align:center;">
+        <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Setpoint</div>
+        <div class="faint t13 mt1">${isSignup ? 'Create your account to get started.' : 'Sign in to your tracker.'}</div>
+      </div>
+      <div class="card">
+        <div class="col g3">
+          <label class="field"><span>Email</span><input class="input sans" type="email" id="auth-email" autocomplete="email" placeholder="you@example.com"></label>
+          <label class="field"><span>Password</span><input class="input sans" type="password" id="auth-password" autocomplete="${isSignup ? 'new-password' : 'current-password'}" placeholder="${isSignup ? 'At least 6 characters' : ''}"></label>
+        </div>
+        ${S.authError ? `<div class="t12 mt2" style="color:var(--brick);">${esc(S.authError)}</div>` : ''}
+        <button class="btn btn-primary btn-block mt3" ${S.authBusy ? 'disabled' : ''} onclick="submitAuth()">${S.authBusy ? 'Please wait…' : (isSignup ? 'Create account' : 'Sign in')}</button>
+        <div class="row between mt3">
+          <button class="icon-btn t12" style="color:var(--ink-faint);" onclick="toggleAuthMode()">${isSignup ? 'Have an account? Sign in' : 'New here? Create account'}</button>
+          ${!isSignup ? `<button class="icon-btn t12" style="color:var(--ink-faint);" onclick="requestPasswordReset()">Forgot password?</button>` : ''}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function toggleAuthMode() {
+  S.authMode = S.authMode === 'signup' ? 'signin' : 'signup';
+  S.authError = null;
+  render();
+}
+window.toggleAuthMode = toggleAuthMode;
+
+async function submitAuth() {
+  const email = (document.getElementById('auth-email').value || '').trim();
+  const password = document.getElementById('auth-password').value || '';
+  if (!email || !password) { S.authError = 'Enter both an email and a password.'; render(); return; }
+  S.authBusy = true; S.authError = null; render();
+  try {
+    if (S.authMode === 'signup') await window.FB.createUser(email, password);
+    else await window.FB.signIn(email, password);
+    // onAuthReady fires automatically from the auth-state listener once this resolves.
+  } catch (e) {
+    S.authBusy = false;
+    S.authError = friendlyAuthError(e);
+    render();
+  }
+}
+window.submitAuth = submitAuth;
+
+async function requestPasswordReset() {
+  const email = (document.getElementById('auth-email').value || '').trim();
+  if (!email) { S.authError = 'Enter your email above first, then tap "Forgot password?" again.'; render(); return; }
+  try {
+    await window.FB.resetPassword(email);
+    toast('Password reset email sent');
+  } catch (e) {
+    S.authError = friendlyAuthError(e); render();
+  }
+}
+window.requestPasswordReset = requestPasswordReset;
+
+function signOutUser() {
+  if (!confirm('Sign out of Setpoint?')) return;
+  window.FB.signOutUser();
+}
+window.signOutUser = signOutUser;
+
+function renderOnboarding() {
+  return `
+  <div class="col center" style="min-height:100vh; padding: 24px 16px;">
+    <div style="width:100%; max-width:420px;">
+      <div class="col center mb4" style="text-align:center;">
+        <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Setpoint</div>
+        <div class="faint t13 mt1">A few numbers to set your starting targets. Adjust anything later — Setpoint refines targets from your real data as you log.</div>
+      </div>
+      <div class="card">
+        <div class="grid2">
+          <label class="field"><span>Sex</span>
+            <select class="input" id="ob-sex"><option value="female">Female</option><option value="male">Male</option></select>
+          </label>
+          <label class="field"><span>Age</span><input class="input" type="number" id="ob-age" value="30"></label>
+          <label class="field"><span>Height (ft)</span><input class="input" type="number" id="ob-feet" value="5"></label>
+          <label class="field"><span>Height (in)</span><input class="input" type="number" id="ob-inches" value="6"></label>
+          <label class="field"><span>Current weight (lb)</span><input class="input" type="number" id="ob-weight" value="160"></label>
+          <label class="field"><span>Goal weight (lb, optional)</span><input class="input" type="number" id="ob-goalweight" placeholder="skip if unsure"></label>
+        </div>
+        <label class="field mt3"><span>Activity level</span>
+          <select class="input" id="ob-activity">
+            ${Object.entries(ACTIVITY).map(([k, v]) => `<option value="${k}" ${k === 'light' ? 'selected' : ''}>${v.label}</option>`).join('')}
+          </select>
+        </label>
+        <div class="grid2 mt3">
+          <label class="field"><span>Goal rate (lb/wk, negative = loss)</span><input class="input" type="number" step="0.25" id="ob-rate" value="-1"></label>
+          <label class="field"><span>Protein target (g per lb)</span><input class="input" type="number" step="0.1" id="ob-protein" value="1.0"></label>
+        </div>
+        <div class="fainter t11" style="margin-top:10px; line-height:1.5;">A rate of −0.5 to −1 lb/week is a commonly used, sustainable range for fat loss.</div>
+        <button class="btn btn-primary btn-block mt4" onclick="submitOnboarding()">Set my targets</button>
+      </div>
+    </div>
+  </div>`;
+}
+function submitOnboarding() {
+  const val = (id) => document.getElementById(id).value;
+  const profile = {
+    sex: val('ob-sex'), age: Number(val('ob-age')) || 30,
+    heightIn: (Number(val('ob-feet')) || 5) * 12 + (Number(val('ob-inches')) || 0),
+    weightLbs: Number(val('ob-weight')) || 150,
+    startWeightLbs: Number(val('ob-weight')) || 150,
+    goalWeightLbs: val('ob-goalweight') ? Number(val('ob-goalweight')) : null,
+    activityLevel: val('ob-activity'),
+    goalRateLbsPerWeek: Number(val('ob-rate')),
+    proteinPerLb: Number(val('ob-protein')) || 1.0,
+    fatPercent: 0.28,
+    startDate: todayKey(),
+  };
+  const targets = estimateFromFormula(profile);
+  targets.history = [Object.assign({}, targets)];
+  S.profile = profile; S.targets = targets;
+  persistProfile(); persistTargets();
+  render();
+}
+window.submitOnboarding = submitOnboarding;
+
+
+// ---------------------------------------------------------------------
+// Dashboard tab
+// ---------------------------------------------------------------------
+function last7DateKeys(endKey) {
+  const out = [];
+  for (let i = 6; i >= 0; i--) out.push(addDays(endKey, -i));
+  return out;
+}
+function lastNDateKeys(n, endKey) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) out.push(addDays(endKey, -i));
+  return out;
+}
+
+function renderDashboard() {
+  const today = todayKey();
+  const weekStart = startOfWeek(today);
+  const weekDays = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(weekStart, i));
+  const dayLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const t = S.targets;
+
+  // weekly nutrition strip data
+  const macroKeys = [
+    { key: 'calories', color: 'var(--calories)' },
+    { key: 'protein', color: 'var(--brick)' },
+    { key: 'fat', color: 'var(--amber)' },
+    { key: 'carbs', color: 'var(--carbs)' },
+  ];
+  const stripRows = macroKeys.map((mk) => {
+    const cols = weekDays.map((d) => {
+      const totals = dayTotals(getDayLog(d));
+      const target = t[mk.key] || 1;
+      const val = totals[mk.key];
+      const frac = S.dashMode === 'remaining' ? clamp((target - val) / target, 0, 1) : clamp(val / target, 0, 1);
+      const isToday = d === today;
+      const barH = Math.max(4, round(frac * 40));
+      return `<div class="nstrip-col ${isToday ? 'nstrip-today' : ''}"><div class="nstrip-bar" style="height:${barH}px; background:${mk.color};"></div></div>`;
+    }).join('');
+    return `<div class="nstrip-row">${cols}</div>`;
+  }).join('');
+  const dayLabels = dayLetters.map((l, i) => `<div class="nstrip-daylabel ${weekDays[i] === today ? 'w600' : ''}">${l}</div>`).join('');
+
+  const todayTotals = dayTotals(getDayLog(today));
+  const rightNums = [
+    { label: 'cal', val: S.dashMode === 'remaining' ? round(t.calories - todayTotals.calories) : round(todayTotals.calories), of: t.calories, suf: '' },
+    { label: 'P', val: S.dashMode === 'remaining' ? round(t.protein - todayTotals.protein) : round(todayTotals.protein), of: t.protein, suf: 'g' },
+    { label: 'F', val: S.dashMode === 'remaining' ? round(t.fat - todayTotals.fat) : round(todayTotals.fat), of: t.fat, suf: 'g' },
+    { label: 'C', val: S.dashMode === 'remaining' ? round(t.carbs - todayTotals.carbs) : round(todayTotals.carbs), of: t.carbs, suf: 'g' },
+  ];
+
+  const weeklyPage = `
+    <div class="row between mb2"><span class="w600 t14">Weekly nutrition</span></div>
+    <div class="row g4">
+      <div class="flex1">${stripRows}<div class="row">${dayLabels}</div></div>
+      <div class="col g2" style="text-align:right;">
+        ${rightNums.map((r) => `<div><span class="mono w700 t16">${r.val}${r.suf}</span><div class="fainter t10">of ${r.of}${r.suf} ${r.label}</div></div>`).join('')}
+      </div>
+    </div>
+    <div class="pill-toggle mt3">
+      <button class="${S.dashMode === 'consumed' ? 'active' : ''}" onclick="setDashMode('consumed')">Consumed</button>
+      <button class="${S.dashMode === 'remaining' ? 'active' : ''}" onclick="setDashMode('remaining')">Remaining</button>
+    </div>`;
+
+  return `
+  <div class="dash-carousel-wrap">
+    <div class="dash-carousel" id="dash-carousel">
+      <div class="dash-page" data-page="0"><div class="card">${weeklyPage}</div></div>
+      <div class="dash-page" data-page="1"><div class="card">${renderDailyNutritionPage()}</div></div>
+      <div class="dash-page" data-page="2"><div class="card">${renderEnergyBalanceBigPage()}</div></div>
+    </div>
+    <div class="dash-dots">
+      <button class="dash-dot ${S.dashPage === 0 ? 'active' : ''}" onclick="scrollToDashPage(0)"></button>
+      <button class="dash-dot ${S.dashPage === 1 ? 'active' : ''}" onclick="scrollToDashPage(1)"></button>
+      <button class="dash-dot ${S.dashPage === 2 ? 'active' : ''}" onclick="scrollToDashPage(2)"></button>
+    </div>
+  </div>
+
+  <div class="w600 t14 mb2">Insights &amp; analytics</div>
+  <div class="grid2 mb2">
+    ${renderExpenditureCard()}
+    ${renderWeightTrendCard()}
+    ${renderEnergyBalanceCard()}
+    ${renderGoalProgressCard()}
+  </div>
+
+  <div class="w600 t14 mb2 mt2">Habits</div>
+  <div class="grid2">
+    ${renderStreakCard('weighIn', 'Weigh-In')}
+    ${renderStreakCard('foodLog', 'Food Logging')}
+  </div>
+  `;
+}
+function setDashMode(m) { S.dashMode = m; render(); }
+window.setDashMode = setDashMode;
+
+function renderDailyNutritionPage() {
+  const t = S.targets;
+  const totals = dayTotals(getDayLog(todayKey()));
+  const target = t.calories;
+  const remaining = round(target - totals.calories);
+  const mode = S.dashMode;
+  const centerVal = mode === 'consumed' ? round(totals.calories) : remaining;
+  const centerLabel = mode === 'consumed' ? 'Consumed' : 'Remaining';
+  const leftVal = mode === 'consumed' ? remaining : round(totals.calories);
+  const leftLabel = mode === 'consumed' ? 'Remaining' : 'Consumed';
+  const pct = target > 0 ? clamp(centerVal / target, 0, 1) : 0;
+
+  const macroRows = [
+    ['Protein', totals.protein, t.protein, 'var(--brick)'],
+    ['Fat', totals.fat, t.fat, 'var(--amber)'],
+    ['Carbs', totals.carbs, t.carbs, 'var(--carbs)'],
+  ].map(([label, val, tgt, color]) => {
+    const shown = mode === 'consumed' ? round(val) : round(tgt - val);
+    const fillFrac = tgt > 0 ? clamp(shown / tgt, 0, 1) : 0;
+    return `<div class="mb3">
+      <div class="t11 faint mb1">${label}</div>
+      <div class="bar-track" style="background:var(--tan-soft);"><div class="bar-fill" style="width:${round(fillFrac * 100)}%; background:${color};"></div></div>
+      <div class="t11 faint mt1">${shown} / ${round(tgt)}g</div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="w600 t14 mb3">Daily Nutrition</div>
+    <div class="row between" style="align-items:center;">
+      <div class="col center" style="width:56px;"><div class="mono w700 t15">${leftVal}</div><div class="fainter t10">${leftLabel}</div></div>
+      <div class="big-ring-wrap">
+        ${svgRing(pct, { size: 164, stroke: 13, color: COLOR.calories })}
+        <div class="big-ring-center">
+          <div class="mono w700" style="font-size:32px; line-height:1;">${centerVal}</div>
+          <div class="faint t12 mt1">${centerLabel}</div>
+        </div>
+      </div>
+      <div class="col center" style="width:56px;"><div class="mono w700 t15">${target}</div><div class="fainter t10">Target</div></div>
+    </div>
+    <div class="mt4">${macroRows}</div>
+    <div class="pill-toggle mt1">
+      <button class="${mode === 'consumed' ? 'active' : ''}" onclick="setDashMode('consumed')">Consumed</button>
+      <button class="${mode === 'remaining' ? 'active' : ''}" onclick="setDashMode('remaining')">Remaining</button>
+    </div>`;
+}
+
+function setEnergyMode(m) { S.energyMode = m; render(); }
+window.setEnergyMode = setEnergyMode;
+
+function renderEnergyBalanceBigPage() {
+  const today = todayKey();
+  const days = lastNDateKeys(30, today);
+  const t = S.targets;
+  const mode = S.energyMode || 'targets';
+  const refValue = mode === 'targets' ? t.calories : t.estimatedTDEE;
+  const values = days.map((d) => dayTotals(getDayLog(d)).calories);
+  const loggedVals = values.filter((v) => v > 0);
+  const avgIntake = loggedVals.length ? round(loggedVals.reduce((a, b) => a + b, 0) / loggedVals.length) : 0;
+  const diff = avgIntake - refValue;
+
+  return `
+    <div class="w600 t14 mb3">Energy Balance</div>
+    ${svgBarWithReference(values, refValue, { w: 320, h: 108 })}
+    <div class="fainter t10 mt1" style="text-align:right;">Last 30 days</div>
+    <div class="row mt3" style="text-align:center;">
+      <div class="flex1"><div class="mono w700 t16">${avgIntake}</div><div class="fainter t10">Nutrition</div></div>
+      <div class="faint t14 col center" style="width:20px;">−</div>
+      <div class="flex1"><div class="mono w700 t16">${refValue}</div><div class="fainter t10">${mode === 'targets' ? 'Targets' : 'Expenditure'}</div></div>
+      <div class="faint t14 col center" style="width:20px;">=</div>
+      <div class="flex1"><div class="mono w700 t16" style="color:${diff <= 0 ? 'var(--green)' : 'var(--brick)'};">${diff > 0 ? '+' : ''}${diff}</div><div class="fainter t10">Difference</div></div>
+    </div>
+    <div class="pill-toggle mt3">
+      <button class="${mode === 'expenditure' ? 'active' : ''}" onclick="setEnergyMode('expenditure')">Expenditure</button>
+      <button class="${mode === 'targets' ? 'active' : ''}" onclick="setEnergyMode('targets')">Targets</button>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------
+// Dashboard carousel mechanics (native scroll-snap; no library)
+// ---------------------------------------------------------------------
+function scrollToDashPage(i) {
+  S.dashPage = i;
+  const el = document.getElementById('dash-carousel');
+  if (el) el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+  document.querySelectorAll('.dash-dot').forEach((d, idx) => d.classList.toggle('active', idx === i));
+}
+window.scrollToDashPage = scrollToDashPage;
+let dashObserver = null;
+function setupDashCarousel() {
+  const el = document.getElementById('dash-carousel');
+  if (!el) return;
+  el.scrollLeft = S.dashPage * el.clientWidth;
+  if (dashObserver) dashObserver.disconnect();
+  dashObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+        const idx = Number(entry.target.getAttribute('data-page'));
+        S.dashPage = idx;
+        document.querySelectorAll('.dash-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+      }
+    });
+  }, { root: el, threshold: 0.5 });
+  document.querySelectorAll('.dash-page').forEach((p) => dashObserver.observe(p));
+}
+
+function toggleExpand(key) { S.expanded[key] = !S.expanded[key]; render(); }
+window.toggleExpand = toggleExpand;
+
+function renderExpenditureCard() {
+  const today = todayKey();
+  const est = estimateFromData(S.logs, S.profile, 7, 4);
+  const days = last7DateKeys(today);
+  const intakeVals = days.map((d) => dayTotals(getDayLog(d)).calories).filter((v) => v > 0);
+  const open = !!S.expanded.expenditure;
+  const body = est.ok
+    ? `<div class="mono w700 t16">${est.estimatedTDEE}<span class="t11 faint w500"> kcal/day</span></div>
+       ${svgSparkline(intakeVals.length ? intakeVals : [0], { w: 130, h: 34, color: COLOR.teal })}`
+    : `<div class="faint t12" style="padding:8px 0;">Log weight + food on ${est.minDays || 4}+ of the last 7 days to see this.</div>`;
+  return `<div class="card tappable" onclick="toggleExpand('expenditure')">
+    <div class="row between"><span class="t13 faint">Expenditure</span><span class="fainter t10">Last 7 days</span></div>
+    ${body}
+    ${open && est.ok ? `<div class="fainter t11 mt2">Estimated from your logged intake vs. actual weight trend — not a fixed formula.</div>` : ''}
+  </div>`;
+}
+
+function renderWeightTrendCard() {
+  const dateKeys = Object.keys(S.logs).sort();
+  const withWeight = dateKeys.filter((k) => S.logs[k].weightLbs != null).map((k) => ({ date: k, weight: S.logs[k].weightLbs }));
+  const trendSeries = computeTrendSeries(withWeight);
+  const last7 = trendSeries.slice(-7);
+  const open = !!S.expanded.weight;
+  if (trendSeries.length === 0) {
+    return `<div class="card"><div class="row between"><span class="t13 faint">Weight Trend</span><span class="fainter t10">Last 7 days</span></div>
+      <div class="faint t12" style="padding:8px 0;">No weigh-ins yet.</div></div>`;
+  }
+  const current = trendSeries[trendSeries.length - 1].trend;
+  let weeklyRate = 0;
+  if (last7.length >= 2) {
+    const pts = last7.map((p) => ({ x: daysBetween(last7[0].date, p.date), y: p.trend }));
+    weeklyRate = round(linRegSlope(pts) * 7, 2);
+  }
+  return `<div class="card tappable" onclick="toggleExpand('weight')">
+    <div class="row between"><span class="t13 faint">Weight Trend</span><span class="fainter t10">Last 7 days</span></div>
+    <div class="mono w700 t16">${current}<span class="t11 faint w500"> lbs</span></div>
+    ${svgSparkline(last7.map((p) => p.trend), { w: 130, h: 34, color: COLOR.teal })}
+    ${open ? renderWeightExpanded(trendSeries, weeklyRate) : ''}
+  </div>`;
+}
+function renderWeightExpanded(trendSeries, weeklyRate) {
+  const chartSlice = trendSeries.slice(-30);
+  return `<div class="mt3">
+    <div class="row g2 mb2">
+      <span class="chip mono" style="background:${weeklyRate <= 0 ? 'var(--green-soft)' : 'var(--brick-soft)'}; color:${weeklyRate <= 0 ? 'var(--green)' : 'var(--brick)'};">${weeklyRate > 0 ? '+' : ''}${weeklyRate} lb/wk</span>
+      <span class="fainter t11">goal ${S.profile.goalRateLbsPerWeek} lb/wk</span>
+    </div>
+    ${svgTrendChart(chartSlice.map((p) => p.weight), chartSlice.map((p) => p.trend), { w: 300, h: 130 })}
+    <div class="fainter t11 mt1">Dots are raw weigh-ins. The line is your smoothed trend.</div>
+  </div>`;
+}
+
+function renderEnergyBalanceCard() {
+  const today = todayKey();
+  const days = last7DateKeys(today);
+  const t = S.targets;
+  const balances = days.map((d) => {
+    const dl = getDayLog(d);
+    if (!dl.foods || dl.foods.length === 0) return null;
+    return dayTotals(dl).calories - t.estimatedTDEE;
+  });
+  const known = balances.filter((v) => v !== null);
+  const open = !!S.expanded.energy;
+  if (known.length === 0) {
+    return `<div class="card"><div class="row between"><span class="t13 faint">Energy Balance</span><span class="fainter t10">Last 7 days</span></div>
+      <div class="faint t12" style="padding:8px 0;">Log food to see this.</div></div>`;
+  }
+  const avg = round(known.reduce((a, b) => a + b, 0) / known.length);
+  return `<div class="card tappable" onclick="toggleExpand('energy')">
+    <div class="row between"><span class="t13 faint">Energy Balance</span><span class="fainter t10">Last 7 days</span></div>
+    ${svgBarChart(balances.map((v) => v || 0), { w: 130, h: 40 })}
+    <div class="mono w700 t14 mt1">${Math.abs(avg)} kcal ${avg <= 0 ? 'deficit' : 'surplus'}<span class="t11 faint w500"> avg/day</span></div>
+    ${open ? `<div class="fainter t11 mt2">Balance vs. your estimated maintenance of ${t.estimatedTDEE} kcal/day.</div>` : ''}
+  </div>`;
+}
+
+function renderGoalProgressCard() {
+  const p = S.profile;
+  const open = !!S.expanded.goal;
+  if (p.goalWeightLbs == null) {
+    return `<div class="card">
+      <div class="row between"><span class="t13 faint">Goal Progress</span></div>
+      <div class="faint t12" style="padding:6px 0 2px;">No goal weight set.</div>
+      <button class="btn btn-outline btn-sm mt1" onclick="setTab('strategy')">Set a goal weight</button>
+    </div>`;
+  }
+  const dateKeys = Object.keys(S.logs).sort();
+  const withWeight = dateKeys.filter((k) => S.logs[k].weightLbs != null).map((k) => ({ date: k, weight: S.logs[k].weightLbs }));
+  const trendSeries = computeTrendSeries(withWeight);
+  const current = trendSeries.length ? trendSeries[trendSeries.length - 1].trend : p.startWeightLbs;
+  const totalChange = p.startWeightLbs - p.goalWeightLbs;
+  const doneSoFar = p.startWeightLbs - current;
+  const pct = totalChange !== 0 ? clamp(doneSoFar / totalChange, 0, 1) : 0;
+  return `<div class="card tappable" onclick="toggleExpand('goal')">
+    <div class="row between"><span class="t13 faint">Goal Progress</span></div>
+    <div class="mono w700 t16 mt1">${round(pct * 100)}%</div>
+    <div class="bar-track mt1" style="background:var(--tan-soft);"><div class="bar-fill" style="width:${round(pct * 100)}%; background:var(--teal);"></div></div>
+    ${open ? `<div class="fainter t11 mt2">${p.startWeightLbs} → ${p.goalWeightLbs} lbs · currently ${current} lbs (trend)</div>` : ''}
+  </div>`;
+}
+
+function renderStreakCard(type, label) {
+  const today = todayKey();
+  const days30 = lastNDateKeys(30, today);
+  const days7 = last7DateKeys(today);
+  const isOn = (d) => {
+    const dl = S.logs[d];
+    if (!dl) return false;
+    return type === 'weighIn' ? dl.weightLbs != null : !!(dl.foods && dl.foods.length > 0);
+  };
+  const grid = days30.map((d) => `<div class="streak-dot ${isOn(d) ? 'on' : ''}"></div>`).join('');
+  const thisWeek = days7.filter(isOn).length;
+  return `<div class="card">
+    <div class="row between mb2"><span class="t13 w600">${label}</span>${iconScale}</div>
+    <div class="streak-grid">${grid}</div>
+    <div class="fainter t11 mt2">${thisWeek}/7 this week</div>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------
+// Log tab
+// ---------------------------------------------------------------------
+function renderLog() {
+  const cd = S.currentDate;
+  const weekStart = startOfWeek(cd);
+  const weekDays = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(weekStart, i));
+  const dayLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const t = S.targets;
+  const dayLog = getDayLog(cd);
+  const totals = dayTotals(dayLog);
+
+  const strip = weekDays.map((d, i) => {
+    const dTotals = dayTotals(getDayLog(d));
+    const pct = t.calories > 0 ? dTotals.calories / t.calories : 0;
+    const selected = d === cd;
+    return `<div class="day-cell ${selected ? 'selected' : ''}">
+      <div class="day-label">${dayLetters[i]}</div>
+      <button class="day-btn" onclick="jumpToDate('${d}')">
+        <div class="day-ring-wrap">
+          ${svgRing(pct, { size: 34, stroke: 3.5, color: d === todayKey() ? COLOR.teal : COLOR.tan })}
+          <div class="day-num" style="color:${selected ? 'var(--ink)' : 'var(--ink-fainter)'};">${dayOfMonth(d)}</div>
+        </div>
+      </button>
+    </div>`;
+  }).join('');
+
+  const macroLine = `
+    <div class="row between t12 mono faint mt2">
+      <span>${round(totals.calories)}/${t.calories}</span>
+      <span>P ${round(totals.protein)}/${t.protein}</span>
+      <span>F ${round(totals.fat)}/${t.fat}</span>
+      <span>C ${round(totals.carbs)}/${t.carbs}</span>
+    </div>`;
+
+  const foodItems = (dayLog.foods && dayLog.foods.length) ? dayLog.foods.map((f) => {
+    const time = new Date(Number(f.id)); const hh = String(time.getHours()).padStart(2, '0'); const mm = String(time.getMinutes()).padStart(2, '0');
+    return `<div class="row between" style="background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:6px;">
+      <div><div class="t14 w500">${esc(f.name)}</div>
+        <div class="t11 faint mono">${hh}:${mm} · ${esc(f.label)} · ${f.calories} kcal · P${round(f.protein)} F${round(f.fat)} C${round(f.carbs)}</div>
+      </div>
+      <button class="icon-btn" onclick="removeFood('${cd}','${f.id}')">${iconTrash}</button>
+    </div>`;
+  }).join('') : `<div class="card empty">Nothing logged ${formatDateLabel(cd).toLowerCase()} yet. Add your first food below.</div>`;
+
+  return `
+  <div class="row between mb3">
+    <button class="ghost-btn" onclick="jumpToDate(addDays('${weekStart}', -7))">${iconChevronL}</button>
+    <span class="mono w600 t14">${formatDateLabel(cd)}</span>
+    <button class="ghost-btn" onclick="jumpToDate(addDays('${weekStart}', 7))">${iconChevronR}</button>
+  </div>
+  <div class="card">
+    <div class="day-strip">${strip}</div>
+    ${macroLine}
+  </div>
+
+  <div class="card">
+    <div class="row between mb2"><span class="t13 w600">Weight</span>${iconScale}</div>
+    <div class="row g2">
+      <input class="input flex1" type="number" id="weight-input" placeholder="lb" value="${dayLog.weightLbs ?? ''}">
+      <button class="btn btn-dark" onclick="saveWeightFromInput('${cd}')">Save</button>
+    </div>
+  </div>
+
+  <div class="row between mb2 mt2">
+    <span class="w600 t14">Food log</span>
+    <button class="btn btn-primary btn-sm row g1" onclick="openPicker('${cd}')">${iconPlus} Add food</button>
+  </div>
+  ${foodItems}
+  `;
+}
+function jumpToDate(d) { S.currentDate = d; render(); }
+window.jumpToDate = jumpToDate;
+function saveWeightFromInput(dateKey) {
+  const v = document.getElementById('weight-input').value;
+  const dl = getDayLog(dateKey);
+  setDayLog(dateKey, Object.assign({}, dl, { weightLbs: v === '' ? null : Number(v) }));
+  render();
+  toast('Weight saved');
+}
+window.saveWeightFromInput = saveWeightFromInput;
+function removeFood(dateKey, id) {
+  const dl = getDayLog(dateKey);
+  setDayLog(dateKey, Object.assign({}, dl, { foods: (dl.foods || []).filter((f) => f.id !== id) }));
+  render();
+}
+window.removeFood = removeFood;
+function addFoodEntry(dateKey, entry) {
+  const dl = getDayLog(dateKey);
+  setDayLog(dateKey, Object.assign({}, dl, { foods: (dl.foods || []).concat([entry]) }));
+}
+function saveFoodToLibrary(food) {
+  const exists = S.savedFoods.some((f) => f.id === food.id);
+  S.savedFoods = exists ? S.savedFoods.map((f) => (f.id === food.id ? food : f)) : [food].concat(S.savedFoods);
+  persistSavedFoods();
+}
+
+// ---------------------------------------------------------------------
+// Food Picker (modal sheet: search Open Food Facts / saved library / custom)
+// ---------------------------------------------------------------------
+function openPicker(dateKey) {
+  S.picker = { forDate: dateKey, tab: 'search', query: '', results: [], status: 'idle', selectedOff: null, grams: 100, selectedSaved: null, multiplier: 1 };
+  render();
+}
+window.openPicker = openPicker;
+function closePicker() { S.picker = null; render(); }
+window.closePicker = closePicker;
+function setPickerTab(tab) { S.picker.tab = tab; S.picker.selectedOff = null; S.picker.selectedSaved = null; render(); }
+window.setPickerTab = setPickerTab;
+
+function renderPicker() {
+  const p = S.picker;
+  const tabBtn = (key, label) => `<button class="${p.tab === key ? 'active' : ''}" onclick="setPickerTab('${key}')">${label}</button>`;
+  let body = '';
+  if (p.tab === 'search') body = renderPickerSearch();
+  else if (p.tab === 'library') body = renderPickerLibrary();
+  else body = renderPickerCustom();
+
+  return `<div class="overlay" onclick="closePicker()">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="row between mb3"><span class="mono w600 t16">Add food</span><button class="icon-btn" onclick="closePicker()">${iconClose}</button></div>
+      <div class="pill-toggle mb3">${tabBtn('search', 'Search')}${tabBtn('library', 'My Foods')}${tabBtn('custom', 'Custom')}</div>
+      ${body}
+    </div>
+  </div>`;
+}
+
+function renderPickerSearch() {
+  const p = S.picker;
+  if (p.selectedOff) {
+    const g = p.grams;
+    const prev = offPreview(p.selectedOff, g);
+    return `
+    <button class="btn btn-outline btn-sm mb2" onclick="backToOffResults()">${iconChevronL} back to results</button>
+    <div class="t15 w600 mb2">${esc(p.selectedOff.name)}</div>
+    <label class="field mb3"><span>Amount (grams)</span><input class="input" type="number" id="off-grams" value="${g}" step="5" oninput="updateOffPreview()"></label>
+    ${macroTiles('off-prev')}
+    <button class="btn btn-primary btn-block mt3" onclick="confirmOff()">Add to log</button>`;
+  }
+  return `
+  <form onsubmit="doPickerSearch(event)" class="row g2 mb3">
+    <input class="input sans flex1" id="picker-query" placeholder="e.g. greek yogurt, chicken breast..." value="${esc(p.query)}">
+    <button type="submit" class="btn btn-primary" style="padding:0 14px;">${iconSearch}</button>
+  </form>
+  ${p.status === 'loading' ? `<div class="faint t13" style="padding:20px 0; text-align:center;">Searching…</div>` : ''}
+  ${p.status === 'error' ? `<div class="t13" style="color:var(--brick); padding:8px 0;">Couldn't reach the food database. Check your connection, or use "Custom".</div>` : ''}
+  ${p.status === 'empty' ? `<div class="faint t13" style="padding:8px 0;">No matches. Try a simpler term, or add it under "Custom".</div>` : ''}
+  ${p.results.map((r, i) => `
+    <button class="food-row" onclick="selectOffResult(${i})">
+      <div><div class="t14 w500">${esc(r.name)}</div><div class="t12 faint mono">${r.brand ? esc(r.brand) + ' · ' : ''}${round(r.caloriesPer100)} kcal / 100g</div></div>
+    </button>`).join('')}
+  `;
+}
+function offPreview(product, grams) {
+  return {
+    calories: round((product.caloriesPer100 * grams) / 100), protein: round((product.proteinPer100 * grams) / 100, 1),
+    carbs: round((product.carbsPer100 * grams) / 100, 1), fat: round((product.fatPer100 * grams) / 100, 1),
+  };
+}
+function macroTiles(idPrefix) {
+  return `<div class="grid4">
+    <div class="macro-tile"><div class="v" id="${idPrefix}-cal">0</div><div class="l">Cal</div></div>
+    <div class="macro-tile"><div class="v" id="${idPrefix}-p">0g</div><div class="l">Protein</div></div>
+    <div class="macro-tile"><div class="v" id="${idPrefix}-c">0g</div><div class="l">Carbs</div></div>
+    <div class="macro-tile"><div class="v" id="${idPrefix}-f">0g</div><div class="l">Fat</div></div>
+  </div>`;
+}
+function fillMacroTiles(idPrefix, m) {
+  document.getElementById(`${idPrefix}-cal`).textContent = m.calories;
+  document.getElementById(`${idPrefix}-p`).textContent = m.protein + 'g';
+  document.getElementById(`${idPrefix}-c`).textContent = m.carbs + 'g';
+  document.getElementById(`${idPrefix}-f`).textContent = m.fat + 'g';
+}
+async function doPickerSearch(e) {
+  if (e) e.preventDefault();
+  const q = document.getElementById('picker-query').value.trim();
+  if (!q) return;
+  S.picker.query = q; S.picker.status = 'loading'; S.picker.selectedOff = null;
+  render();
+  try {
+    const r = await searchOpenFoodFacts(q);
+    S.picker.results = r; S.picker.status = r.length ? 'idle' : 'empty';
+  } catch (err) { S.picker.status = 'error'; }
+  render();
+}
+window.doPickerSearch = doPickerSearch;
+function selectOffResult(i) { S.picker.selectedOff = S.picker.results[i]; S.picker.grams = 100; render(); setTimeout(() => updateOffPreview(), 0); }
+window.selectOffResult = selectOffResult;
+function backToOffResults() { S.picker.selectedOff = null; render(); }
+window.backToOffResults = backToOffResults;
+function updateOffPreview() {
+  const grams = Number(document.getElementById('off-grams').value) || 0;
+  S.picker.grams = grams;
+  fillMacroTiles('off-prev', offPreview(S.picker.selectedOff, grams));
+}
+window.updateOffPreview = updateOffPreview;
+function confirmOff() {
+  const grams = S.picker.grams;
+  const prod = S.picker.selectedOff;
+  const macros = offPreview(prod, grams);
+  addFoodEntry(S.picker.forDate, Object.assign({ id: `${Date.now()}`, name: prod.name, label: `${grams}g` }, macros));
+  saveFoodToLibrary({ id: `off-${prod.id}`, name: prod.name, calories: round(prod.caloriesPer100), protein: round(prod.proteinPer100, 1), carbs: round(prod.carbsPer100, 1), fat: round(prod.fatPer100, 1), servingLabel: '100g' });
+  closePicker(); toast('Added to log');
+}
+window.confirmOff = confirmOff;
+
+function renderPickerLibrary() {
+  const p = S.picker;
+  if (p.selectedSaved) {
+    const f = p.selectedSaved, m = p.multiplier;
+    return `
+    <button class="btn btn-outline btn-sm mb2" onclick="backToLibraryList()">${iconChevronL} back to list</button>
+    <div class="t15 w600 mb2">${esc(f.name)}</div>
+    <label class="field mb3"><span>Servings (1 = ${esc(f.servingLabel)})</span><input class="input" type="number" id="saved-mult" value="${m}" step="0.25" min="0.25" oninput="updateSavedPreview()"></label>
+    ${macroTiles('saved-prev')}
+    <button class="btn btn-primary btn-block mt3" onclick="confirmSaved()">Add to log</button>`;
+  }
+  const rows = S.savedFoods.length === 0
+    ? `<div class="faint t13" style="padding:10px 0;">Nothing saved yet. Foods you add get saved here automatically.</div>`
+    : S.savedFoods.map((f, i) => `
+      <button class="food-row" data-name="${esc(f.name.toLowerCase())}" onclick="selectSavedFood(${i})">
+        <div><div class="t14 w500">${esc(f.name)}</div><div class="t12 faint mono">${f.calories} kcal per ${esc(f.servingLabel)}</div></div>
+      </button>`).join('');
+  return `
+  <input class="input sans mb3" id="lib-query" placeholder="Search your saved foods..." oninput="filterLibraryList()">
+  <div id="lib-list">${rows}</div>`;
+}
+function filterLibraryList() {
+  const q = document.getElementById('lib-query').value.trim().toLowerCase();
+  document.querySelectorAll('#lib-list .food-row').forEach((el) => {
+    el.style.display = el.getAttribute('data-name').includes(q) ? '' : 'none';
+  });
+}
+window.filterLibraryList = filterLibraryList;
+function selectSavedFood(i) { S.picker.selectedSaved = S.savedFoods[i]; S.picker.multiplier = 1; render(); setTimeout(() => updateSavedPreview(), 0); }
+window.selectSavedFood = selectSavedFood;
+function backToLibraryList() { S.picker.selectedSaved = null; render(); }
+window.backToLibraryList = backToLibraryList;
+function savedPreview(food, mult) {
+  return { calories: round(food.calories * mult), protein: round(food.protein * mult, 1), carbs: round(food.carbs * mult, 1), fat: round(food.fat * mult, 1) };
+}
+function updateSavedPreview() {
+  const mult = Number(document.getElementById('saved-mult').value) || 0;
+  S.picker.multiplier = mult;
+  fillMacroTiles('saved-prev', savedPreview(S.picker.selectedSaved, mult));
+}
+window.updateSavedPreview = updateSavedPreview;
+function confirmSaved() {
+  const f = S.picker.selectedSaved, mult = S.picker.multiplier;
+  const macros = savedPreview(f, mult);
+  const label = mult === 1 ? f.servingLabel : `${mult}× ${f.servingLabel}`;
+  addFoodEntry(S.picker.forDate, Object.assign({ id: `${Date.now()}`, name: f.name, label }, macros));
+  closePicker(); toast('Added to log');
+}
+window.confirmSaved = confirmSaved;
+
+function renderPickerCustom() {
+  return `
+  <label class="field mb2"><span>Food name</span><input class="input sans" id="custom-name" placeholder="e.g. Homemade chili"></label>
+  <label class="field mb3"><span>Serving description</span><input class="input sans" id="custom-serving" placeholder="e.g. 1 cup, 200g"></label>
+  <div class="grid2 mb3">
+    <label class="field"><span>Calories</span><input class="input" type="number" id="custom-cal"></label>
+    <label class="field"><span>Protein (g)</span><input class="input" type="number" id="custom-p"></label>
+    <label class="field"><span>Carbs (g)</span><input class="input" type="number" id="custom-c"></label>
+    <label class="field"><span>Fat (g)</span><input class="input" type="number" id="custom-f"></label>
+  </div>
+  <button class="btn btn-primary btn-block" onclick="confirmCustom()">Add to log</button>`;
+}
+function confirmCustom() {
+  const val = (id) => document.getElementById(id).value;
+  const name = val('custom-name').trim() || 'Custom food';
+  const servingLabel = val('custom-serving').trim() || '1 serving';
+  const cal = parseFloat(val('custom-cal')) || 0, p = parseFloat(val('custom-p')) || 0, c = parseFloat(val('custom-c')) || 0, f = parseFloat(val('custom-f')) || 0;
+  addFoodEntry(S.picker.forDate, { id: `${Date.now()}`, name, label: servingLabel, calories: cal, protein: p, carbs: c, fat: f });
+  saveFoodToLibrary({ id: `custom-${Date.now()}`, name, calories: cal, protein: p, carbs: c, fat: f, servingLabel });
+  closePicker(); toast('Added to log');
+}
+window.confirmCustom = confirmCustom;
+
+// ---------------------------------------------------------------------
+// Shortcuts sheet (opened from the nav "+" button)
+// ---------------------------------------------------------------------
+function openShortcuts() { S.shortcuts = { forDate: todayKey() }; render(); }
+window.openShortcuts = openShortcuts;
+function closeShortcuts() { S.shortcuts = null; render(); }
+window.closeShortcuts = closeShortcuts;
+
+function shortcutWeight() {
+  const d = S.shortcuts.forDate;
+  closeShortcuts(); S.activeTab = 'log'; S.currentDate = d; render();
+  setTimeout(() => { const el = document.getElementById('weight-input'); if (el) el.focus(); }, 30);
+}
+window.shortcutWeight = shortcutWeight;
+function shortcutSearch() { const d = S.shortcuts.forDate; closeShortcuts(); openPicker(d); }
+window.shortcutSearch = shortcutSearch;
+function shortcutQuickAdd() {
+  const d = S.shortcuts.forDate; closeShortcuts(); openPicker(d); S.picker.tab = 'custom'; render();
+}
+window.shortcutQuickAdd = shortcutQuickAdd;
+function shortcutBarcode() {
+  const d = S.shortcuts.forDate; closeShortcuts();
+  S.barcode = { forDate: d, code: '', status: 'idle', product: null, grams: 100 };
+  render();
+}
+window.shortcutBarcode = shortcutBarcode;
+function shortcutEditDay() {
+  const d = S.shortcuts.forDate; closeShortcuts(); S.activeTab = 'log'; S.currentDate = d; render();
+}
+window.shortcutEditDay = shortcutEditDay;
+
+function renderShortcuts() {
+  return `<div class="overlay" onclick="closeShortcuts()">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="row between mb3"><span class="mono w600 t16">Shortcuts</span><button class="icon-btn" onclick="closeShortcuts()">${iconClose}</button></div>
+      <div class="shortcut-grid">
+        <button class="shortcut-btn" onclick="shortcutWeight()"><div class="shortcut-circle">${iconScale}</div><span>Weight</span></button>
+        <button class="shortcut-btn" onclick="shortcutSearch()"><div class="shortcut-circle">${iconSearch}</div><span>Search</span></button>
+        <button class="shortcut-btn" onclick="shortcutBarcode()"><div class="shortcut-circle">${iconBarcode}</div><span>Barcode</span></button>
+        <button class="shortcut-btn" onclick="shortcutQuickAdd()"><div class="shortcut-circle">${iconZap}</div><span>Quick Add</span></button>
+      </div>
+      <div class="mt2">
+        <button class="shortcut-row" onclick="shortcutEditDay()"><span class="icon-wrap">${iconEditDay}</span><span class="grow">Edit day</span>${iconChevronR}</button>
+        <div class="shortcut-row disabled"><span class="icon-wrap">${iconChefHat}</span><span class="grow">Recipes</span><span class="soon-chip">Soon</span></div>
+        <div class="shortcut-row disabled"><span class="icon-wrap">${iconChefHat}</span><span class="grow">New recipe</span><span class="soon-chip">Soon</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------
+// Barcode lookup sheet (typed barcode → Open Food Facts product lookup)
+// ---------------------------------------------------------------------
+function closeBarcodeSheet() { S.barcode = null; render(); }
+window.closeBarcodeSheet = closeBarcodeSheet;
+async function lookupBarcode(e) {
+  if (e) e.preventDefault();
+  const code = document.getElementById('barcode-input').value.trim();
+  if (!code) return;
+  S.barcode.code = code; S.barcode.status = 'loading'; S.barcode.product = null; render();
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(code)}.json`);
+    const data = await res.json();
+    if (data.status === 1 && data.product && data.product.nutriments && data.product.nutriments['energy-kcal_100g'] != null) {
+      const p = data.product;
+      S.barcode.product = {
+        id: code, name: p.product_name || `Item ${code}`, brand: p.brands ? p.brands.split(',')[0].trim() : '',
+        caloriesPer100: p.nutriments['energy-kcal_100g'] || 0, proteinPer100: p.nutriments['proteins_100g'] || 0,
+        carbsPer100: p.nutriments['carbohydrates_100g'] || 0, fatPer100: p.nutriments['fat_100g'] || 0,
+      };
+      S.barcode.status = 'found'; S.barcode.grams = 100;
+    } else { S.barcode.status = 'notfound'; }
+  } catch (err) { S.barcode.status = 'error'; }
+  render();
+  if (S.barcode.status === 'found') setTimeout(() => updateBarcodePreview(), 0);
+}
+window.lookupBarcode = lookupBarcode;
+function updateBarcodePreview() {
+  const grams = Number(document.getElementById('barcode-grams').value) || 0;
+  S.barcode.grams = grams;
+  fillMacroTiles('bc-prev', offPreview(S.barcode.product, grams));
+}
+window.updateBarcodePreview = updateBarcodePreview;
+function confirmBarcode() {
+  const prod = S.barcode.product, grams = S.barcode.grams;
+  const macros = offPreview(prod, grams);
+  addFoodEntry(S.barcode.forDate, Object.assign({ id: `${Date.now()}`, name: prod.name, label: `${grams}g` }, macros));
+  saveFoodToLibrary({ id: `off-${prod.id}`, name: prod.name, calories: round(prod.caloriesPer100), protein: round(prod.proteinPer100, 1), carbs: round(prod.carbsPer100, 1), fat: round(prod.fatPer100, 1), servingLabel: '100g' });
+  closeBarcodeSheet(); toast('Added to log');
+}
+window.confirmBarcode = confirmBarcode;
+
+function renderBarcodeSheet() {
+  const b = S.barcode;
+  let body = `
+    <form onsubmit="lookupBarcode(event)" class="row g2 mb3">
+      <input class="input" id="barcode-input" inputmode="numeric" placeholder="Type the barcode number" value="${esc(b.code)}">
+      <button type="submit" class="btn btn-primary" style="padding:0 14px;">${iconSearch}</button>
+    </form>`;
+  if (b.status === 'loading') body += `<div class="faint t13" style="padding:16px 0; text-align:center;">Looking up…</div>`;
+  if (b.status === 'notfound') body += `<div class="faint t13" style="padding:8px 0;">No product found for that barcode. Try "Custom" from the Log tab instead.</div>`;
+  if (b.status === 'error') body += `<div class="t13" style="color:var(--brick); padding:8px 0;">Couldn't reach the food database. Check your connection.</div>`;
+  if (b.status === 'found' && b.product) {
+    body += `
+      <div class="t15 w600 mb2">${esc(b.product.name)}${b.product.brand ? ` <span class="faint t12">· ${esc(b.product.brand)}</span>` : ''}</div>
+      <label class="field mb3"><span>Amount (grams)</span><input class="input" type="number" id="barcode-grams" value="${b.grams}" step="5" oninput="updateBarcodePreview()"></label>
+      ${macroTiles('bc-prev')}
+      <button class="btn btn-primary btn-block mt3" onclick="confirmBarcode()">Add to log</button>`;
+  }
+  return `<div class="overlay" onclick="closeBarcodeSheet()">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="row between mb3"><span class="mono w600 t16">Barcode</span><button class="icon-btn" onclick="closeBarcodeSheet()">${iconClose}</button></div>
+      ${body}
+    </div>
+  </div>`;
+}
+
+
+// ---------------------------------------------------------------------
+// Strategy tab
+// ---------------------------------------------------------------------
+let recalcResult = null;
+function renderStrategy() {
+  const t = S.targets, p = S.profile;
+  const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const programStart = (t.history && t.history[0] && t.history[0].date) || t.date;
+
+  const weekBlocks = days.map(() => `
+    <div class="col g1" style="align-items:center;">
+      <span class="chip mono" style="background:var(--teal-soft); color:var(--teal-deep); font-size:11px;">${t.calories}</span>
+      <div class="mono t11 w600" style="background:var(--brick-soft); color:var(--brick); width:100%; text-align:center; border-radius:6px; padding:5px 0;">${t.protein}P</div>
+      <div class="mono t11 w600" style="background:var(--amber-soft); color:var(--amber); width:100%; text-align:center; border-radius:6px; padding:5px 0;">${t.fat}F</div>
+      <div class="mono t11 w600" style="background:var(--carbs-soft); color:var(--carbs); width:100%; text-align:center; border-radius:6px; padding:5px 0;">${t.carbs}C</div>
+    </div>`).join('');
+
+  return `
+  <div class="card">
+    <div class="w600 t14 mb2">Current program</div>
+    <div class="faint t11 mb2">${formatShort(programStart)} — Now</div>
+    <div class="grid7" style="display:grid; grid-template-columns:repeat(7,1fr); gap:5px;">${weekBlocks}</div>
+    <div class="row between mt3" style="grid-template-columns:repeat(7,1fr);">
+      ${days.map((d) => `<div class="flex1 t10 fainter" style="text-align:center;">${d}</div>`).join('')}
+    </div>
+    <div class="fainter t11 mt2">Est. maintenance: ${t.estimatedTDEE} kcal/day · source: ${t.source === 'data' ? `your data (${t.daysUsed} days)` : 'starting formula'}</div>
+    <button class="btn btn-outline btn-sm mt3" onclick="resetProgram()">New program (reset to formula)</button>
+  </div>
+
+  <div class="card">
+    <div class="row g1 mb1"><span class="w600 t14">Update targets from your data</span></div>
+    <div class="faint t12 mb2" style="line-height:1.5;">Uses your last 14 days of logged weight + food to re-estimate real maintenance calories — the adaptive part that makes targets track your actual body, not a fixed formula. Needs 7+ days with both weight and food logged.</div>
+    <button class="btn btn-primary btn-block" onclick="runRecalc()">Check my numbers</button>
+    <div id="recalc-result">${renderRecalcResult()}</div>
+  </div>
+
+  <div class="card">
+    <div class="w600 t14 mb3">Profile</div>
+    <div class="grid2">
+      <label class="field"><span>Sex</span><select class="input" id="set-sex"><option value="female" ${p.sex === 'female' ? 'selected' : ''}>Female</option><option value="male" ${p.sex === 'male' ? 'selected' : ''}>Male</option></select></label>
+      <label class="field"><span>Age</span><input class="input" type="number" id="set-age" value="${p.age}"></label>
+      <label class="field"><span>Height (ft)</span><input class="input" type="number" id="set-feet" value="${Math.floor(p.heightIn / 12)}"></label>
+      <label class="field"><span>Height (in)</span><input class="input" type="number" id="set-inches" value="${p.heightIn % 12}"></label>
+      <label class="field"><span>Goal weight (lb)</span><input class="input" type="number" id="set-goalweight" value="${p.goalWeightLbs ?? ''}" placeholder="optional"></label>
+      <label class="field"><span>Goal rate (lb/wk)</span><input class="input" type="number" step="0.25" id="set-rate" value="${p.goalRateLbsPerWeek}"></label>
+      <label class="field"><span>Protein (g/lb)</span><input class="input" type="number" step="0.1" id="set-protein" value="${p.proteinPerLb}"></label>
+      <label class="field"><span>Fat %</span><input class="input" type="number" step="1" id="set-fatpct" value="${round(p.fatPercent * 100)}"></label>
+    </div>
+    <label class="field mt3"><span>Activity level</span>
+      <select class="input" id="set-activity">${Object.entries(ACTIVITY).map(([k, v]) => `<option value="${k}" ${k === p.activityLevel ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
+    </label>
+    <button class="btn btn-primary btn-block mt3" onclick="saveProfileForm()">Save profile</button>
+  </div>
+
+  ${t.history && t.history.length ? `<div class="card">
+    <div class="w600 t14 mb2">Target history</div>
+    ${t.history.slice().reverse().slice(0, 12).map((h) => `<div class="row between t12 mono faint" style="padding:3px 0;"><span>${h.date}</span><span>${h.calories} kcal (${h.source})</span></div>`).join('')}
+  </div>` : ''}
+  `;
+}
+function renderRecalcResult() {
+  if (!recalcResult) return '';
+  if (!recalcResult.ok) {
+    return `<div class="faint t13 mt3">Not enough data yet — ${recalcResult.daysLogged || 0}/${recalcResult.minDays || 7} days logged with both weight and food in the last two weeks.</div>`;
+  }
+  return `<div class="mt3" style="background:var(--teal-soft); border-radius:10px; padding:12px;">
+    <div class="t12" style="color:var(--teal-deep);">Based on ${recalcResult.daysUsed} days: trend moved ${recalcResult.weeklyRateActual} lb/wk against an estimated maintenance of ${recalcResult.estimatedTDEE} kcal/day.</div>
+    ${macroTiles('recalc-prev')}
+    <div class="row g2 mt2"><button class="btn btn-primary flex1" onclick="applyRecalc()">Apply new targets</button><button class="btn btn-outline flex1" onclick="dismissRecalc()">Dismiss</button></div>
+  </div>`;
+}
+function runRecalc() {
+  const p = readProfileFormDraft();
+  recalcResult = estimateFromData(S.logs, p, 14, 7);
+  render();
+  if (recalcResult.ok) setTimeout(() => fillMacroTiles('recalc-prev', recalcResult), 0);
+}
+window.runRecalc = runRecalc;
+function readProfileFormDraft() {
+  const val = (id) => document.getElementById(id).value;
+  return Object.assign({}, S.profile, {
+    goalRateLbsPerWeek: Number(val('set-rate')), proteinPerLb: Number(val('set-protein')), fatPercent: Number(val('set-fatpct')) / 100,
+  });
+}
+function applyRecalc() {
+  S.targets = Object.assign({}, recalcResult, { history: (S.targets.history || []).concat([recalcResult]) });
+  persistTargets(); recalcResult = null; render(); toast('Targets updated');
+}
+window.applyRecalc = applyRecalc;
+function dismissRecalc() { recalcResult = null; render(); }
+window.dismissRecalc = dismissRecalc;
+function saveProfileForm() {
+  const val = (id) => document.getElementById(id).value;
+  S.profile = Object.assign({}, S.profile, {
+    sex: val('set-sex'), age: Number(val('set-age')),
+    heightIn: (Number(val('set-feet')) || 0) * 12 + (Number(val('set-inches')) || 0),
+    goalWeightLbs: val('set-goalweight') ? Number(val('set-goalweight')) : null,
+    activityLevel: val('set-activity'), goalRateLbsPerWeek: Number(val('set-rate')),
+    proteinPerLb: Number(val('set-protein')), fatPercent: Number(val('set-fatpct')) / 100,
+  });
+  persistProfile(); render(); toast('Profile saved');
+}
+window.saveProfileForm = saveProfileForm;
+function resetProgram() {
+  if (!confirm('Reset targets to a fresh formula-based estimate? This does not delete your logs.')) return;
+  const fresh = estimateFromFormula(S.profile);
+  S.targets = Object.assign({}, fresh, { history: (S.targets.history || []).concat([fresh]) });
+  persistTargets(); render(); toast('New program started');
+}
+window.resetProgram = resetProgram;
+
+// ---------------------------------------------------------------------
+// More tab
+// ---------------------------------------------------------------------
+function renderMore() {
+  const pref = readKey('theme') || 'dark';
+  const themeBtn = (key, label) => `<button class="${pref === key ? 'active' : ''}" onclick="setThemePref('${key}')">${label}</button>`;
+  return `
+  <div class="card">
+    <div class="w600 t14 mb2">Account</div>
+    <div class="t13 faint mb3">Signed in as ${esc((S.authUser && S.authUser.email) || '')}</div>
+    <button class="btn btn-outline btn-block" onclick="signOutUser()">Sign out</button>
+  </div>
+  <div class="card">
+    <div class="w600 t14 mb2">Appearance</div>
+    <div class="pill-toggle">${themeBtn('light', 'Light')}${themeBtn('dark', 'Dark')}${themeBtn('system', 'System')}</div>
+  </div>
+  <div class="card">
+    <div class="w600 t14 mb2">Backup &amp; restore</div>
+    <div class="faint t12 mb3" style="line-height:1.5;">Your data lives only in this browser. Export a backup now and then so you never lose it — especially before clearing browser data or switching phones.</div>
+    <button class="btn btn-dark btn-block mb2" onclick="exportData()">Export backup (.json)</button>
+    <label class="btn btn-outline btn-block" style="display:block; text-align:center;">Import backup
+      <input type="file" accept="application/json" style="display:none;" onchange="importData(event)">
+    </label>
+  </div>
+
+  <div class="card">
+    <div class="w600 t14 mb2">Reset</div>
+    <div class="faint t12 mb2">Clears all profile, targets, logs, and saved foods from this browser. This cannot be undone.</div>
+    <button class="btn btn-outline btn-block" style="color:var(--brick); border-color:var(--brick-soft);" onclick="resetAllData()">Erase all data</button>
+  </div>
+
+  <div class="card">
+    <div class="w600 t14 mb2">About Setpoint</div>
+    <div class="faint t12" style="line-height:1.6;">
+      Setpoint estimates your maintenance calories from a formula at first, then — once you've logged weight and food consistently — recalculates it from what actually happened to your trend weight versus what you ate. That's what "Update targets from your data" on the Strategy tab does.<br><br>
+      This is a simplified personal tool, not medical advice. Treat targets as a helpful estimate, and check in with a doctor or dietitian for anything health-critical.<br><br>
+      Food search uses the free, open Open Food Facts database and requires an internet connection. Everything else works offline — your data is stored only in this browser's local storage.
+    </div>
+  </div>
+  `;
+}
+function exportData() {
+  const payload = { profile: S.profile, targets: S.targets, logs: S.logs, savedFoods: S.savedFoods, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `setpoint-backup-${todayKey()}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Backup downloaded');
+}
+window.exportData = exportData;
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data.profile || !data.targets) throw new Error('Missing profile/targets in file');
+      S.profile = data.profile; S.targets = data.targets; S.logs = data.logs || {}; S.savedFoods = data.savedFoods || [];
+      persistProfile(); persistTargets(); persistLogs(); persistSavedFoods();
+      render(); toast('Backup restored');
+    } catch (err) { toast('Could not read that file — is it a Setpoint backup?'); }
+  };
+  reader.readAsText(file);
+}
+window.importData = importData;
+async function resetAllData() {
+  if (!confirm('Erase ALL Setpoint data for this account? This cannot be undone.')) return;
+  const empty = { profile: null, targets: null, logs: {}, savedFoods: [] };
+  S.profile = null; S.targets = null; S.logs = {}; S.savedFoods = [];
+  S.activeTab = 'dashboard'; S.currentDate = todayKey();
+  if (currentUid) {
+    try { await window.FB.setUserDoc(currentUid, empty); }
+    catch (e) { console.error('reset failed', e); toast('Could not reset — check your connection.'); return; }
+  }
+  render(); toast('All data erased');
+}
+window.resetAllData = resetAllData;
+
+// ---------------------------------------------------------------------
+// PWA install support (home screen icon + manifest) and boot
+// ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Theme (light / dark / system) — dark is the default
+// ---------------------------------------------------------------------
+function resolveTheme(pref) {
+  if (pref === 'system') return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return pref;
+}
+function applyTheme() {
+  const pref = readKey('theme') || 'dark';
+  currentTheme = resolveTheme(pref);
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  const mc = document.querySelector('meta[name="theme-color"]');
+  if (mc) mc.setAttribute('content', currentTheme === 'dark' ? '#15181A' : '#FAFAF7');
+}
+function setThemePref(pref) {
+  writeKey('theme', pref);
+  applyTheme();
+  render();
+}
+window.setThemePref = setThemePref;
+if (window.matchMedia) {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if ((readKey('theme') || 'dark') === 'system') { applyTheme(); render(); }
+  });
+}
+
+applyTheme();
+
+(function setupPWA() {
+  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#2D5D5E"/><circle cx="50" cy="50" r="28" fill="none" stroke="#FAFAF7" stroke-width="7"/><circle cx="50" cy="50" r="7" fill="#FAFAF7"/></svg>`;
+  const iconDataUri = 'data:image/svg+xml;utf8,' + encodeURIComponent(iconSvg);
+  document.getElementById('apple-icon-link').setAttribute('href', iconDataUri);
+  document.getElementById('favicon-link').setAttribute('href', iconDataUri);
+  const bg = currentTheme === 'dark' ? '#15181A' : '#FAFAF7';
+  const manifest = {
+    name: 'Setpoint', short_name: 'Setpoint', start_url: '.', display: 'standalone',
+    background_color: bg, theme_color: bg,
+    icons: [{ src: iconDataUri, sizes: 'any', type: 'image/svg+xml' }],
+  };
+  const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+  document.getElementById('manifest-link').setAttribute('href', URL.createObjectURL(manifestBlob));
+})();
+
+render();
+
+// If the Firebase SDK never loads (offline, CDN blocked, script error), the
+// auth listener never fires and we'd hang on "Loading…" forever. Surface a
+// real message instead of a dead screen.
+setTimeout(() => {
+  if (S.authLoading) {
+    S.authLoading = false;
+    S.authConnectError = true;
+    render();
+  }
+}, 10000);
+</script>
+</body>
+</html>
