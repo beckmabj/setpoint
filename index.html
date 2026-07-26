@@ -558,19 +558,46 @@ function estimateFromData(logs, profile, windowSize, minDays) {
   const trendSeries = computeTrendSeries(withWeight);
   const trendByDate = Object.fromEntries(trendSeries.map((p) => [p.date, p.trend]));
 
-  const windowEnd = dateKeys[dateKeys.length - 1];
+  // Anchor the window to TODAY, not to the last day that happens to have an
+  // entry. Anchoring to the last logged day meant that after a month away the
+  // estimate was still computed over that old month and reported confidently
+  // as "last 14 days"; now the minimum-days guard correctly fails instead.
+  const windowEnd = todayKey();
   const windowStart = addDays(windowEnd, -(windowSize - 1));
-  const windowDays = dateKeys.filter((k) => k >= windowStart && k <= windowEnd && logs[k] && logs[k].weightLbs != null && logs[k].foods && logs[k].foods.length > 0);
-  if (windowDays.length < minDays) return { ok: false, reason: 'need', daysLogged: windowDays.length, minDays };
+  const inWindow = (k) => k >= windowStart && k <= windowEnd;
+  const hasFood = (k) => logs[k] && logs[k].foods && logs[k].foods.length > 0;
+  const hasWeight = (k) => logs[k] && logs[k].weightLbs != null;
 
-  const regressionPoints = windowDays.map((k) => ({ x: daysBetween(windowDays[0], k), y: trendByDate[k] }));
-  const slopePerDay = linRegSlope(regressionPoints);
+  // Trust needs days where BOTH were recorded; that is what the guard counts.
+  const pairedDays = dateKeys.filter((k) => inWindow(k) && hasFood(k) && hasWeight(k));
+  if (pairedDays.length < minDays) return { ok: false, reason: 'need', daysLogged: pairedDays.length, minDays };
+
+  // Slope over every weigh-in in the window, regressed on RAW weights.
+  //
+  // This previously regressed the EMA trend, which double-smooths: the EMA
+  // (alpha 0.12, ~8-day time constant) lags the real decline, so its slope is
+  // materially shallower than the truth. On a controlled series falling
+  // exactly 0.1 lb/day at exactly 2000 kcal — true maintenance 2350 — that
+  // lag reported -0.38 lb/wk instead of -0.7 and a TDEE of 2192, understating
+  // maintenance by ~158 kcal/day and so understating the target every time.
+  // Least-squares regression is itself a smoother; feeding it pre-smoothed
+  // input buys nothing and costs accuracy. The EMA is still what the weight
+  // chart and trend-weight readout use.
+  const weighDays = dateKeys.filter((k) => inWindow(k) && hasWeight(k));
+  const slopePerDay = linRegSlope(weighDays.map((k) => ({ x: daysBetween(weighDays[0], k), y: logs[k].weightLbs })));
   const weeklyRateActual = slopePerDay * 7;
-  const avgIntake = windowDays.reduce((s, k) => s + dayTotals(logs[k]).calories, 0) / windowDays.length;
-  const span = daysBetween(windowDays[0], windowDays[windowDays.length - 1]) || 1;
-  const totalWeightChange = slopePerDay * span;
-  const estimatedTDEE = avgIntake - (totalWeightChange * 3500) / span;
-  const currentTrendWeight = trendByDate[dateKeys[dateKeys.length - 1]] ?? profile.weightLbs;
+
+  // Intake over every day in the window with food. Averaging only over days
+  // that ALSO had a weigh-in biased the estimate whenever eating and
+  // weighing habits differed — the food on unweighed days still drove the
+  // weight change being measured.
+  const foodDays = dateKeys.filter((k) => inWindow(k) && hasFood(k));
+  const avgIntake = foodDays.reduce((sum, k) => sum + dayTotals(logs[k]).calories, 0) / foodDays.length;
+
+  // A pound of fat is ~3500 kcal, so a slope of x lb/day is x*3500 kcal/day
+  // of surplus or deficit relative to maintenance.
+  const estimatedTDEE = avgIntake - slopePerDay * 3500;
+  const currentTrendWeight = trendSeries[trendSeries.length - 1].trend;
   const desiredDailyBalance = (profile.goalRateLbsPerWeek * 3500) / 7;
   const targetCalories = Math.max(estimatedTDEE + desiredDailyBalance, 1200);
   const proteinG = profile.proteinPerLb * currentTrendWeight;
@@ -579,7 +606,8 @@ function estimateFromData(logs, profile, windowSize, minDays) {
 
   return {
     ok: true, source: 'data', calories: round(targetCalories), protein: round(proteinG), fat: round(fatG), carbs: round(carbsG),
-    estimatedTDEE: round(estimatedTDEE), weeklyRateActual: round(weeklyRateActual, 2), daysUsed: windowDays.length,
+    estimatedTDEE: round(estimatedTDEE), weeklyRateActual: round(weeklyRateActual, 2), daysUsed: pairedDays.length,
+    intakeDays: foodDays.length, windowSize,
     currentTrendWeight: round(currentTrendWeight, 1), avgIntake: round(avgIntake), date: todayKey(),
   };
 }
@@ -1615,20 +1643,32 @@ function setupDashCarousel() {
 function toggleExpand(key) { S.expanded[key] = !S.expanded[key]; render(); }
 window.toggleExpand = toggleExpand;
 
+// The single source of truth for the adaptive estimate. The dashboard card
+// previously ran its own 7-day / 4-point variant while Strategy used 14/7, so
+// the two screens reported different maintenance numbers with no explanation —
+// and a 4-point regression on smoothed weight swings by hundreds of kcal
+// day to day.
+const TDEE_WINDOW = 14;
+const TDEE_MIN_DAYS = 7;
+function currentEstimate() {
+  if (!S.profile) return { ok: false, reason: 'noweight', daysLogged: 0 };
+  return estimateFromData(S.logs, S.profile, TDEE_WINDOW, TDEE_MIN_DAYS);
+}
+
 function renderExpenditureCard() {
   const today = todayKey();
-  const est = estimateFromData(S.logs, S.profile, 7, 4);
-  const days = last7DateKeys(today);
+  const est = currentEstimate();
+  const days = lastNDateKeys(TDEE_WINDOW, today);
   const intakeVals = days.map((d) => dayTotals(getDayLog(d)).calories).filter((v) => v > 0);
   const open = !!S.expanded.expenditure;
   const body = est.ok
     ? `<div class="mono w700 t16">${est.estimatedTDEE}<span class="t11 faint w500"> kcal/day</span></div>
        ${svgSparkline(intakeVals.length ? intakeVals : [0], { w: 130, h: 34, color: COLOR.teal })}`
-    : `<div class="faint t12" style="padding:8px 0;">Log weight + food on ${est.minDays || 4}+ of the last 7 days to see this.</div>`;
+    : `<div class="faint t12" style="padding:8px 0;">Log weight + food on ${est.minDays || TDEE_MIN_DAYS}+ of the last ${TDEE_WINDOW} days to see this.</div>`;
   return `<div class="card tappable" onclick="toggleExpand('expenditure')">
-    <div class="row between"><span class="t13 faint">Expenditure</span><span class="fainter t10">Last 7 days</span></div>
+    <div class="row between"><span class="t13 faint">Expenditure</span><span class="fainter t10">Last ${TDEE_WINDOW} days</span></div>
     ${body}
-    ${open && est.ok ? `<div class="fainter t11 mt2">Estimated from your logged intake vs. actual weight trend — not a fixed formula.</div>` : ''}
+    ${open && est.ok ? `<div class="fainter t11 mt2">Estimated from ${est.daysUsed} days with both weight and food, against ${est.intakeDays} days of intake — your real trend, not a formula. Same figure as “Check my numbers” on Strategy.</div>` : ''}
   </div>`;
 }
 
@@ -2823,7 +2863,7 @@ function renderRecalcResult() {
 }
 function runRecalc() {
   const p = readProfileFormDraft();
-  recalcResult = estimateFromData(S.logs, p, 14, 7);
+  recalcResult = estimateFromData(S.logs, p, TDEE_WINDOW, TDEE_MIN_DAYS);
   render();
   if (recalcResult.ok) setTimeout(() => fillMacroTiles('recalc-prev', recalcResult), 0);
 }
