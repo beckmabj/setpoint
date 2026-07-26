@@ -2902,7 +2902,10 @@ function renderMore() {
       <button class="btn btn-outline" onclick="exportDailyCsv()">Daily totals (.csv)</button>
     </div>
     <label class="btn btn-outline btn-block" style="display:block; text-align:center;">Import backup or MacroFactor data
-      <input type="file" accept="application/json" style="display:none;" onchange="importData(event)">
+      <!-- iOS doesn't reliably map .json to the application/json UTI, so a
+           strict accept greys the file out in the Files picker. Offer the
+           extension and text/plain too; importData validates the contents. -->
+      <input type="file" accept=".json,application/json,text/json,text/plain" style="display:none;" onchange="importData(event)">
     </label>
     <div class="fainter t11 mt2">The .json backup restores everything. The .csv files open in Excel or Numbers and are the ones to share when you want your data looked at.</div>
   </div>
