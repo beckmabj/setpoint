@@ -9,7 +9,17 @@
       "Bash(node --check /private/tmp/claude-501/-Users-brandonbeckman-Developer-setpoint/bd1d63f1-575c-4ffc-a9f1-3bc67fa0c0ae/scratchpad/p.js)",
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit -q -m 'Setpoint: single-file nutrition tracker *)"
+      "Bash(git commit -q -m 'Setpoint: single-file nutrition tracker *)",
+      "Bash(which brew *)",
+      "Bash(brew install *)",
+      "Bash(gh --version)",
+      "mcp__claude-in-chrome__list_connected_browsers",
+      "Bash(curl -s -o /tmp/fsresp.txt -w \"HTTP %{http_code}\\\\n\" \"https://firestore.googleapis.com/v1/projects/setpoint-f9948/databases/\\(default\\)/documents/users/some-random-uid\")",
+      "Read(//tmp/**)",
+      "Bash(python3 -m http.server 8000)",
+      "Bash(gh api *)",
+      "Bash(git rm *)",
+      "Bash(git commit -q -m 'Keep personal setup notes out of the public repo *)"
     ]
   }
 }
