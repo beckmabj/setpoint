@@ -1657,12 +1657,12 @@ function renderMealTimeline(cd, dayLog) {
       const t = new Date(ts);
       const mm = ts > 0 ? String(t.getMinutes()).padStart(2, '0') : '--';
       const hh = ts > 0 ? String(t.getHours()).padStart(2, '0') : '--';
-      return `<div class="meal-item">
+      return `<div class="meal-item tappable" onclick="editEntry('${cd}','${jsId(f.id)}')">
         <div class="flex1">
           <div class="t14 w500">${esc(f.name)}</div>
           <div class="t11 faint mono">${hh}:${mm} · ${esc(f.label || '')} · ${round(f.calories)} kcal · P${round(f.protein)} F${round(f.fat)} C${round(f.carbs)}</div>
         </div>
-        <button class="icon-btn" onclick="removeFood('${cd}','${jsId(f.id)}')">${iconTrash}</button>
+        <button class="icon-btn" onclick="event.stopPropagation();removeFood('${cd}','${jsId(f.id)}')">${iconTrash}</button>
       </div>`;
     }).join('');
 
@@ -1701,7 +1701,12 @@ function saveWeightFromInput(dateKey) {
 window.saveWeightFromInput = saveWeightFromInput;
 function removeFood(dateKey, id) {
   const dl = getDayLog(dateKey);
-  setDayLog(dateKey, Object.assign({}, dl, { foods: (dl.foods || []).filter((f) => f.id !== id) }));
+  // Compare on the sanitised form: the inline handler passes jsId(f.id), so a
+  // legacy id containing a character jsId strips would never match its raw
+  // value and the delete would silently do nothing.
+  setDayLog(dateKey, Object.assign({}, dl, {
+    foods: (dl.foods || []).filter((f) => jsId(f.id) !== id && f.id !== id),
+  }));
   render();
 }
 window.removeFood = removeFood;
@@ -1866,10 +1871,11 @@ function renderPicker() {
   else if (p.tab === 'library') body = renderPickerLibrary();
   else body = renderPickerCustom();
 
+  // Editing targets one specific entry, so the source tabs are meaningless.
   return `<div class="overlay" onclick="closePicker()">
     <div class="sheet" onclick="event.stopPropagation()">
-      <div class="row between mb3"><span class="mono w600 t16">Add food</span><button class="icon-btn" onclick="closePicker()">${iconClose}</button></div>
-      <div class="pill-toggle mb3">${tabBtn('recent', 'Recent')}${tabBtn('search', 'Search')}${tabBtn('library', 'My Foods')}${tabBtn('custom', 'Custom')}</div>
+      <div class="row between mb3"><span class="mono w600 t16">${p.editing ? 'Edit entry' : 'Add food'}</span><button class="icon-btn" onclick="closePicker()">${iconClose}</button></div>
+      ${p.editing ? '' : `<div class="pill-toggle mb3">${tabBtn('recent', 'Recent')}${tabBtn('search', 'Search')}${tabBtn('library', 'My Foods')}${tabBtn('custom', 'Custom')}</div>`}
       ${body}
     </div>
   </div>`;
@@ -1914,14 +1920,15 @@ function renderPickerRecent() {
   if (p.selectedRecent) {
     const f = p.selectedRecent;
     return `
-    <button class="btn btn-outline btn-sm mb2" onclick="backToRecents()">${iconChevronL} back</button>
+    ${p.editing ? '' : `<button class="btn btn-outline btn-sm mb2" onclick="backToRecents()">${iconChevronL} back</button>`}
     <div class="row between mb2">
       <div class="flex1"><div class="t15 w600">${esc(f.name)}</div>
         ${f.brand ? `<div class="t12 faint">${esc(f.brand)}</div>` : ''}</div>
       <button class="icon-btn" onclick="toggleFavorite()" title="Favorite">${isFavorite(f) ? iconHeartFull : iconHeart}</button>
     </div>
     ${amountControls('recent')}
-    <button class="btn btn-primary btn-block mt3" onclick="confirmRecent()">Add to log</button>`;
+    <button class="btn btn-primary btn-block mt3" onclick="confirmRecent()">${p.editing ? 'Save changes' : 'Add to log'}</button>
+    ${p.editing ? `<button class="btn btn-outline btn-block mt2" onclick="deleteEditingEntry()">Delete this entry</button>` : ''}`;
   }
 
   const favs = favoriteFoods();
@@ -1991,10 +1998,58 @@ window.backToRecents = backToRecents;
 
 function confirmRecent() {
   const p = S.picker;
+  if (p.editing) { commitEntryEdit(); return; }
   addFoodEntry(p.forDate, buildEntry(p.selectedRecent, p.amount, p.unit, defaultEntryAt(p.forDate, p.at)));
   closePicker(); toast('Added to log');
 }
 window.confirmRecent = confirmRecent;
+
+// ---- Editing an existing entry ---------------------------------------
+// "I ate 150g not 100g" previously meant delete, re-search, re-enter. The
+// entry already carries everything needed to reconstitute the food, so the
+// same amount controls can just reopen against it.
+function editEntry(dateKey, entryId) {
+  const dl = getDayLog(dateKey);
+  const entry = (dl.foods || []).find((f) => jsId(f.id) === entryId);
+  if (!entry) return;
+  const food = entryToFood(entry);
+  if (!food) {
+    // Pre-dates the per-100g entry shape, so there's no basis to rescale it.
+    toast('This entry is too old to edit — delete and re-add it');
+    return;
+  }
+  S.picker = {
+    forDate: dateKey, at: entryTime(entry) || null, tab: 'recent', query: '', results: [], status: 'idle',
+    selectedOff: null, selectedRecent: food, selectedSaved: null, multiplier: 1,
+    amount: entry.amount != null ? entry.amount : 100,
+    unit: unitsFor(food).includes(entry.unit) ? entry.unit : 'g',
+    editing: { dateKey, id: entry.id },
+  };
+  render();
+  setTimeout(() => onAmountChange('recent'), 0);
+}
+window.editEntry = editEntry;
+
+function deleteEditingEntry() {
+  const ed = S.picker && S.picker.editing;
+  if (!ed) return;
+  removeFood(ed.dateKey, jsId(ed.id));
+  closePicker(); toast('Entry deleted');
+}
+window.deleteEditingEntry = deleteEditingEntry;
+
+function commitEntryEdit() {
+  const p = S.picker, ed = p.editing;
+  const dl = getDayLog(ed.dateKey);
+  const prev = (dl.foods || []).find((f) => f.id === ed.id);
+  if (!prev) { closePicker(); return; }
+  // Keep the original id and timestamp so the entry stays in its meal group.
+  const next = Object.assign(buildEntry(p.selectedRecent, p.amount, p.unit, entryTime(prev)), { id: prev.id });
+  setDayLog(ed.dateKey, Object.assign({}, dl, {
+    foods: (dl.foods || []).map((f) => (f.id === ed.id ? next : f)),
+  }));
+  closePicker(); toast('Entry updated');
+}
 
 // ---------------------------------------------------------------------
 // Shared amount + unit control
