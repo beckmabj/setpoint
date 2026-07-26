@@ -1985,7 +1985,7 @@ function recentFoods(limit) {
   for (const e of entries) {
     const food = entryToFood(e);
     if (!food) continue;
-    const key = (e.foodId || e.name).toLowerCase();
+    const key = foodKey(e.foodId || e.name);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({ food, lastAmount: e.amount || 100, lastUnit: e.unit || 'g' });
@@ -1995,9 +1995,18 @@ function recentFoods(limit) {
 }
 
 // ---- Favorites -------------------------------------------------------
-function favKey(food) { return `fav-${food.id || food.name}`; }
+// Identity for a food across storage paths. foodIds have been written both
+// raw ("mf:pasture raised brown eggs") and safeId-stripped
+// ("mf:pastureraisedbrowneggs"), so compare on a form that ignores the
+// difference — otherwise the same food shows up twice in Recents and its
+// favourite heart reads empty.
+function foodKey(v) { return String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9:]/g, ''); }
+function favKey(food) { return `fav-${foodKey(food.id || food.name)}`; }
 function isFavorite(food) {
-  return !!food && S.savedFoods.some((f) => f.id === favKey(food) && f.favorite);
+  if (!food) return false;
+  const want = favKey(food);
+  return S.savedFoods.some((f) => f.favorite
+    && (f.id === want || `fav-${foodKey(f.foodId || f.name)}` === want));
 }
 function toggleFavorite() {
   const p = S.picker;
@@ -2005,7 +2014,8 @@ function toggleFavorite() {
   if (!food) return;
   const key = favKey(food);
   if (isFavorite(food)) {
-    S.savedFoods = S.savedFoods.filter((f) => f.id !== key);
+    S.savedFoods = S.savedFoods.filter((f) => !(f.favorite
+      && (f.id === key || `fav-${foodKey(f.foodId || f.name)}` === key)));
     persistSavedFoods();
     toast('Removed from favorites');
   } else {
@@ -3057,6 +3067,7 @@ function cleanSavedFoods(raw) {
   return raw.filter((f) => f && typeof f === 'object').map((f, i) => {
     const o = Object.assign({}, f);
     o.id = safeId(f.id, `imported-${i}`);
+    if (o.foodId != null) o.foodId = safeId(o.foodId, '');
     o.name = String(f.name == null ? 'Unnamed food' : f.name).slice(0, 200);
     o.servingLabel = String(f.servingLabel || '1 serving').slice(0, 80);
     ['calories', 'protein', 'carbs', 'fat', 'caloriesPer100', 'proteinPer100',
