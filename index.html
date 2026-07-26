@@ -495,7 +495,22 @@ function dayTotals(dayLog) {
   }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
 }
 
+// Latest smoothed trend weight, or null if there aren't enough weigh-ins.
+// profile.weightLbs is only ever written at onboarding, so using it directly
+// means the formula keeps computing from your STARTING weight forever — BMR
+// and the protein target both drift wrong as you gain or lose.
+function currentWeightLbs() {
+  const keys = Object.keys(S.logs || {}).sort();
+  const pts = keys.filter((k) => S.logs[k] && S.logs[k].weightLbs != null)
+    .map((k) => ({ date: k, weight: S.logs[k].weightLbs }));
+  if (!pts.length) return null;
+  const trend = computeTrendSeries(pts);
+  return trend[trend.length - 1].trend;
+}
+
 function estimateFromFormula(profile) {
+  const liveWeight = currentWeightLbs();
+  if (liveWeight) profile = Object.assign({}, profile, { weightLbs: liveWeight });
   const bmr = bmrMifflin(profile);
   const tdee = bmr * ((ACTIVITY[profile.activityLevel] || ACTIVITY.moderate).mult);
   const desiredDailyBalance = (profile.goalRateLbsPerWeek * 3500) / 7;
@@ -2620,6 +2635,19 @@ function renderStrategy() {
   </div>
 
   <div class="card">
+    <div class="row g1 mb1"><span class="w600 t14">Set targets manually</span></div>
+    <div class="faint t12 mb3" style="line-height:1.5;">Overrides the formula and the adaptive estimate with numbers you choose — useful if you're following a coach's plan or carrying targets over from another app. Adaptive recalculation stays available; running it will replace these.</div>
+    <div class="grid2 mb2">
+      <label class="field"><span>Calories</span><input class="input" type="number" inputmode="numeric" id="man-cal" value="${t.calories}" oninput="updateManualSplit()"></label>
+      <label class="field"><span>Protein (g)</span><input class="input" type="number" inputmode="numeric" id="man-p" value="${t.protein}" oninput="updateManualSplit()"></label>
+      <label class="field"><span>Fat (g)</span><input class="input" type="number" inputmode="numeric" id="man-f" value="${t.fat}" oninput="updateManualSplit()"></label>
+      <label class="field"><span>Carbs (g)</span><input class="input" type="number" inputmode="numeric" id="man-c" value="${t.carbs}" oninput="updateManualSplit()"></label>
+    </div>
+    <div class="t11 fainter mb3" id="man-check">${manualSplitSummary(t.calories, t.protein, t.fat, t.carbs)}</div>
+    <button class="btn btn-primary btn-block" onclick="saveManualTargets()">Save these targets</button>
+  </div>
+
+  <div class="card">
     <div class="w600 t14 mb3">Profile</div>
     <div class="grid2">
       <label class="field"><span>Sex</span><select class="input" id="set-sex"><option value="female" ${p.sex === 'female' ? 'selected' : ''}>Female</option><option value="male" ${p.sex === 'male' ? 'selected' : ''}>Male</option></select></label>
@@ -2627,10 +2655,16 @@ function renderStrategy() {
       <label class="field"><span>Height (ft)</span><input class="input" type="number" id="set-feet" value="${Math.floor(p.heightIn / 12)}"></label>
       <label class="field"><span>Height (in)</span><input class="input" type="number" id="set-inches" value="${p.heightIn % 12}"></label>
       <label class="field"><span>Goal weight (lb)</span><input class="input" type="number" id="set-goalweight" value="${p.goalWeightLbs ?? ''}" placeholder="optional"></label>
-      <label class="field"><span>Goal rate (lb/wk)</span><input class="input" type="number" step="0.25" id="set-rate" value="${p.goalRateLbsPerWeek}"></label>
+      <label class="field"><span>Goal direction</span><select class="input" id="set-direction">
+        <option value="lose" ${p.goalRateLbsPerWeek < 0 ? 'selected' : ''}>Lose weight</option>
+        <option value="maintain" ${p.goalRateLbsPerWeek === 0 ? 'selected' : ''}>Maintain</option>
+        <option value="gain" ${p.goalRateLbsPerWeek > 0 ? 'selected' : ''}>Gain weight</option>
+      </select></label>
+      <label class="field"><span>Rate (lb/wk)</span><input class="input" type="number" step="0.25" min="0" id="set-rate" value="${Math.abs(p.goalRateLbsPerWeek)}"></label>
       <label class="field"><span>Protein (g/lb)</span><input class="input" type="number" step="0.1" id="set-protein" value="${p.proteinPerLb}"></label>
-      <label class="field"><span>Fat %</span><input class="input" type="number" step="1" id="set-fatpct" value="${round(p.fatPercent * 100)}"></label>
+      <label class="field"><span>Fat (% of calories)</span><input class="input" type="number" step="1" min="10" max="60" id="set-fatpct" value="${round(p.fatPercent * 100)}"></label>
     </div>
+    <div class="fainter t11 mt2">“Fat (% of calories)” is your macro split — how much of each day's energy comes from fat. It is not your body fat percentage, which Tare doesn't use. At ${round(p.fatPercent * 100)}% a ${t.calories} kcal day works out to about ${round((t.calories * p.fatPercent) / 9)}g of fat.</div>
     <label class="field mt3"><span>Activity level</span>
       <select class="input" id="set-activity">${Object.entries(ACTIVITY).map(([k, v]) => `<option value="${k}" ${k === p.activityLevel ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
     </label>
@@ -2674,13 +2708,57 @@ function applyRecalc() {
 window.applyRecalc = applyRecalc;
 function dismissRecalc() { recalcResult = null; render(); }
 window.dismissRecalc = dismissRecalc;
+// ---- Manual targets --------------------------------------------------
+// Everything previously derived from the formula or the regression, with no
+// way to simply state your numbers.
+//
+// Macros are entered in grams and can disagree with the calorie figure, so
+// the implied total is shown rather than silently "corrected" — the entered
+// calories stay authoritative.
+function manualSplitSummary(cal, p, f, c) {
+  const fromMacros = Math.round(p * 4 + f * 9 + c * 4);
+  const diff = Math.round(fromMacros - cal);
+  if (!isFinite(fromMacros)) return '';
+  // Real-world targets are rounded, so a small gap is normal, not an error:
+  // 180P/60F/165C is 1920 kcal against a 1950 target.
+  if (Math.abs(diff) <= 60) return `Macros add up to ${fromMacros} kcal — consistent with your ${cal} kcal target.`;
+  return `Macros add up to ${fromMacros} kcal, ${Math.abs(diff)} ${diff > 0 ? 'above' : 'below'} the ${cal} kcal target. Both are saved as entered.`;
+}
+
+function updateManualSplit() {
+  const v = (id) => Number((document.getElementById(id) || {}).value) || 0;
+  const el = document.getElementById('man-check');
+  if (el) el.textContent = manualSplitSummary(v('man-cal'), v('man-p'), v('man-f'), v('man-c'));
+}
+window.updateManualSplit = updateManualSplit;
+
+function saveManualTargets() {
+  const v = (id) => Number(document.getElementById(id).value);
+  const cal = v('man-cal'), pr = v('man-p'), fat = v('man-f'), carb = v('man-c');
+  if (![cal, pr, fat, carb].every((n) => isFinite(n) && n >= 0)) { toast('Enter numbers for all four'); return; }
+  if (cal < 800 || cal > 8000) { toast(`${cal} kcal doesn't look right`); return; }
+  const next = {
+    calories: Math.round(cal), protein: Math.round(pr), fat: Math.round(fat), carbs: Math.round(carb),
+    estimatedTDEE: S.targets ? (S.targets.estimatedTDEE || 0) : 0,
+    date: todayKey(), source: 'manual', ok: true,
+  };
+  S.targets = Object.assign({}, next, { history: (S.targets && S.targets.history ? S.targets.history : []).concat([next]) });
+  persistTargets(); render(); toast('Targets saved');
+}
+window.saveManualTargets = saveManualTargets;
+
 function saveProfileForm() {
   const val = (id) => document.getElementById(id).value;
   S.profile = Object.assign({}, S.profile, {
     sex: val('set-sex'), age: Number(val('set-age')),
     heightIn: (Number(val('set-feet')) || 0) * 12 + (Number(val('set-inches')) || 0),
     goalWeightLbs: val('set-goalweight') ? Number(val('set-goalweight')) : null,
-    activityLevel: val('set-activity'), goalRateLbsPerWeek: Number(val('set-rate')),
+    activityLevel: val('set-activity'),
+    goalRateLbsPerWeek: (() => {
+      const dir = val('set-direction');
+      const mag = Math.abs(Number(val('set-rate')) || 0);
+      return dir === 'maintain' ? 0 : (dir === 'lose' ? -mag : mag);
+    })(),
     proteinPerLb: Number(val('set-protein')), fatPercent: Number(val('set-fatpct')) / 100,
   });
   persistProfile(); render(); toast('Profile saved');
