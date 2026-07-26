@@ -2607,19 +2607,81 @@ if (window.matchMedia) {
 
 applyTheme();
 
+// ---------------------------------------------------------------------
+// App icon
+//
+// The mark is a dark "T" on an orange tile, sitting above a faint baseline —
+// the tare line the app is named for.
+//
+// Two variants. iOS and Android apply their own rounded mask, so the icon
+// they get is full-bleed square; giving them a pre-rounded tile produces
+// visible double-rounded corners. Browser favicons aren't masked, so those
+// get the rounded version.
+//
+// Critically, iOS silently IGNORES an SVG apple-touch-icon — it accepts PNG
+// only, which is why the previous SVG data URI never appeared on the home
+// screen. The SVG is rasterised to PNG through a canvas at runtime, so this
+// still needs no build step and no separate image files.
+// ---------------------------------------------------------------------
+function tareIconSvg(rounded) {
+  const corner = rounded ? 'rx="22"' : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 100 100">
+    <defs><linearGradient id="o" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFA24B"/><stop offset="1" stop-color="#E8642A"/>
+    </linearGradient></defs>
+    <rect width="100" height="100" ${corner} fill="url(#o)"/>
+    <rect x="21" y="27" width="58" height="9" rx="4.5" fill="#14181B"/>
+    <rect x="45.5" y="27" width="9" height="45" rx="4.5" fill="#14181B"/>
+    <rect x="21" y="66" width="58" height="7" rx="3.5" fill="#14181B" opacity=".32"/>
+  </svg>`;
+}
+
+function svgToPng(svg, size) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = size; c.height = size;
+        c.getContext('2d').drawImage(img, 0, 0, size, size);
+        resolve(c.toDataURL('image/png'));
+      } catch (err) { reject(err); }
+    };
+    img.onerror = () => reject(new Error('icon rasterise failed'));
+    img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  });
+}
+
 (function setupPWA() {
-  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#2D5D5E"/><circle cx="50" cy="50" r="28" fill="none" stroke="#FAFAF7" stroke-width="7"/><circle cx="50" cy="50" r="7" fill="#FAFAF7"/></svg>`;
-  const iconDataUri = 'data:image/svg+xml;utf8,' + encodeURIComponent(iconSvg);
-  document.getElementById('apple-icon-link').setAttribute('href', iconDataUri);
-  document.getElementById('favicon-link').setAttribute('href', iconDataUri);
+  const roundedUri = 'data:image/svg+xml;utf8,' + encodeURIComponent(tareIconSvg(true));
+  document.getElementById('favicon-link').setAttribute('href', roundedUri);
+
   const bg = currentTheme === 'dark' ? '#15181A' : '#FAFAF7';
-  const manifest = {
-    name: 'Tare', short_name: 'Tare', start_url: '.', display: 'standalone',
-    background_color: bg, theme_color: bg,
-    icons: [{ src: iconDataUri, sizes: 'any', type: 'image/svg+xml' }],
+  const publish = (icons) => {
+    const manifest = {
+      name: 'Tare', short_name: 'Tare', start_url: '.', display: 'standalone',
+      background_color: bg, theme_color: bg, icons,
+    };
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+    document.getElementById('manifest-link').setAttribute('href', URL.createObjectURL(blob));
   };
-  const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
-  document.getElementById('manifest-link').setAttribute('href', URL.createObjectURL(manifestBlob));
+  // Publish an SVG manifest immediately so an install prompt is never iconless,
+  // then upgrade to PNGs once rasterised.
+  publish([{ src: roundedUri, sizes: 'any', type: 'image/svg+xml' }]);
+
+  const square = tareIconSvg(false);
+  Promise.all([svgToPng(square, 180), svgToPng(square, 192), svgToPng(square, 512)])
+    .then(([apple, p192, p512]) => {
+      document.getElementById('apple-icon-link').setAttribute('href', apple);
+      publish([
+        { src: p192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+        { src: p512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+      ]);
+    })
+    .catch((err) => {
+      console.error('icon rasterise failed, falling back to SVG:', err);
+      document.getElementById('apple-icon-link').setAttribute('href', roundedUri);
+    });
 })();
 
 render();
