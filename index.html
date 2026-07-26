@@ -3155,9 +3155,56 @@ function importData(e) {
           };
         });
         S.logs = merged;
+
+        // Optional targeted patches. A merge file may carry profilePatch /
+        // targetsPatch to correct specific fields without the wholesale
+        // replacement (and confirmation) of a full restore. Only the keys
+        // present are touched; everything else is left alone.
+        let patched = 0;
+        if (data.profilePatch && typeof data.profilePatch === 'object' && S.profile) {
+          const allowed = ['sex', 'age', 'heightIn', 'weightLbs', 'startWeightLbs', 'goalWeightLbs',
+            'activityLevel', 'goalRateLbsPerWeek', 'proteinPerLb', 'fatPercent', 'startDate'];
+          const patch = {};
+          allowed.forEach((k) => {
+            if (!(k in data.profilePatch)) return;
+            const v = data.profilePatch[k];
+            if (k === 'sex') patch[k] = v === 'female' ? 'female' : 'male';
+            else if (k === 'activityLevel') { if (Object.prototype.hasOwnProperty.call(ACTIVITY, v)) patch[k] = v; }
+            else if (k === 'startDate') { if (DATE_KEY_RE.test(String(v))) patch[k] = v; }
+            else if (v === null) patch[k] = null;
+            else { const n = num(v, NaN); if (isFinite(n)) patch[k] = n; }
+          });
+          if (Object.keys(patch).length) { S.profile = Object.assign({}, S.profile, patch); persistProfile(); patched++; }
+        }
+        if (data.targetsPatch && typeof data.targetsPatch === 'object' && S.targets) {
+          const tp = data.targetsPatch;
+          const next = Object.assign({}, S.targets);
+          ['calories', 'protein', 'fat', 'carbs', 'estimatedTDEE'].forEach((k) => {
+            if (k in tp) { const n = num(tp[k], NaN); if (isFinite(n)) next[k] = n; }
+          });
+          if (typeof tp.source === 'string') next.source = tp.source.replace(/[^A-Za-z0-9 _.:+-]/g, '').slice(0, 40);
+          if (DATE_KEY_RE.test(String(tp.date))) next.date = tp.date;
+          if (Array.isArray(tp.history)) next.history = tp.history.map(cleanTargetSnapshot).filter(Boolean);
+          S.targets = next; persistTargets(); patched++;
+        }
+
         const haveSaved = new Set(S.savedFoods.map((f) => f.id));
-        const newSaved = cleanSavedFoods(data.savedFoods).filter((f) => !haveSaved.has(f.id));
-        S.savedFoods = S.savedFoods.concat(newSaved);
+        const incomingSaved = cleanSavedFoods(data.savedFoods);
+        const newSaved = incomingSaved.filter((f) => !haveSaved.has(f.id));
+        // Update in place where the record already exists, so a merge can
+        // correct a stored favourite rather than silently skipping it.
+        // Match on the normalised food key, not the raw id: safeId keeps
+        // hyphens while foodKey strips them, so an id-only comparison let the
+        // same favourite be added twice.
+        const byKey = new Map(incomingSaved.map((f) => [foodKey(f.foodId || f.name), f]));
+        const updated = S.savedFoods.map((f) => {
+          const k = foodKey(f.foodId || f.name);
+          return byKey.has(k) ? Object.assign({}, f, byKey.get(k), { id: f.id }) : f;
+        });
+        const seenKeys = new Set(updated.map((f) => foodKey(f.foodId || f.name)));
+        S.savedFoods = updated.concat(
+          incomingSaved.filter((f) => !seenKeys.has(foodKey(f.foodId || f.name))),
+        );
         persistLogs(); persistSavedFoods();
         render();
         toast(`Merged ${addedFoods} entries across ${addedDays || Object.keys(incoming).length} days`);
