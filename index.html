@@ -165,11 +165,20 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .day-cell button.day-btn { background: none; border: none; padding: 0; cursor: pointer; }
 
 /* nutrition strip (dashboard) */
-.nstrip-row { display: flex; align-items: flex-end; gap: 4px; height: 46px; margin-bottom: 6px; }
-.nstrip-col { flex: 1; display: flex; align-items: flex-end; justify-content: center; height: 100%; }
-.nstrip-bar { width: 9px; border-radius: 4px; min-height: 4px; }
-.nstrip-daylabel { flex: 1; text-align: center; font-size: 10.5px; color: var(--ink-fainter); }
-.nstrip-today { outline: 1.5px solid var(--teal); outline-offset: 2px; border-radius: 8px; }
+/* Weekly nutrition: seven day COLUMNS, each holding four tracks (cal, protein,
+   fat, carbs). Drawing a track behind every value — rather than a floating
+   dash — gives the card real height, so it fills the carousel instead of
+   leaving dead space, and makes each day readable as a proportion. */
+.nstrip { display: flex; gap: 4px; align-items: stretch; }
+.nstrip-day { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 4px 3px 3px; border-radius: 9px; border: 1.5px solid transparent; background: transparent; appearance: none; -webkit-appearance: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.nstrip-day.is-today { border-color: var(--ink); }
+.nstrip-cell { flex: 1; min-height: 26px; background: var(--tan-soft); border-radius: 4px; position: relative; overflow: hidden; }
+.nstrip-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 4px; transition: height 200ms ease; }
+.nstrip-daylabel { text-align: center; font-size: 11px; color: var(--ink-fainter); padding-top: 2px; }
+.nstrip-day.is-today .nstrip-daylabel { color: var(--ink); font-weight: 700; }
+.nstrip-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.nstrip-summary .v { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
+.nstrip-summary .l { font-size: 10.5px; color: var(--ink-fainter); margin-top: 1px; }
 
 /* streak grid */
 .streak-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
@@ -194,7 +203,6 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
 .toast-action { margin-left: 12px; background: none; border: none; color: var(--teal-deep); font-weight: 700; font-size: 13px; cursor: pointer; padding: 2px 4px; }
 /* A day with nothing logged: a hairline track, never a filled bar */
-.nstrip-empty { height: 3px !important; background: var(--line-strong) !important; opacity: .55; }
 
 /* Connection state, shown persistently in the top bar rather than as a toast */
 .sync-pill { display: inline-flex; align-items: center; min-height: 18px; }
@@ -249,7 +257,8 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .dash-carousel { display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .dash-carousel::-webkit-scrollbar { display: none; }
 .dash-page { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; display: flex; }
-.dash-page > .card { flex: 1; margin-bottom: 0; }
+.dash-page > .card { flex: 1; margin-bottom: 0; display: flex; flex-direction: column; }
+.dash-page > .card > .nstrip { flex: 1; min-height: 120px; }
 .dash-page .card { margin-bottom: 0; }
 .dash-dots { display: flex; justify-content: center; gap: 10px; margin-top: 10px; padding: 6px 0; }
 .dash-dot { width: 6px; height: 6px; border-radius: 3px; background: var(--line-strong); border: none; padding: 0; cursor: pointer; transition: all 180ms ease; position: relative; }
@@ -1396,48 +1405,53 @@ function renderDashboard() {
     { key: 'fat', color: 'var(--amber)' },
     { key: 'carbs', color: 'var(--carbs)' },
   ];
-  const stripRows = macroKeys.map((mk) => {
-    const cols = weekDays.map((d) => {
-      const dayLog = getDayLog(d);
-      const logged = (dayLog.foods || []).length > 0;
-      const totals = dayTotals(dayLog);
+  // Column per day, four tracks per column.
+  const stripDays = weekDays.map((d, i) => {
+    const dayLog = getDayLog(d);
+    const logged = (dayLog.foods || []).length > 0;
+    const totals = dayTotals(dayLog);
+    const isToday = d === today;
+    const cells = macroKeys.map((mk) => {
       const target = t[mk.key] || 1;
       const val = totals[mk.key];
-      const isToday = d === today;
-      // A day with nothing logged is UNKNOWN, not complete. In "remaining"
-      // mode (target - 0) / target = 1, so every unlogged day — including the
-      // rest of this week — drew a full-height bar implying total compliance.
-      if (!logged) {
-        return `<div class="nstrip-col ${isToday ? 'nstrip-today' : ''}"><div class="nstrip-bar nstrip-empty" title="Nothing logged"></div></div>`;
-      }
-      const frac = S.dashMode === 'remaining' ? clamp((target - val) / target, 0, 1) : clamp(val / target, 0, 1);
-      const barH = Math.max(4, round(frac * 40));
-      return `<div class="nstrip-col ${isToday ? 'nstrip-today' : ''}"><div class="nstrip-bar" style="height:${barH}px; background:${mk.color};"></div></div>`;
+      // A day with nothing logged is UNKNOWN, not complete: in "remaining"
+      // mode (target - 0) / target = 1 would otherwise fill every future day.
+      const frac = !logged ? 0
+        : (S.dashMode === 'remaining' ? clamp((target - val) / target, 0, 1) : clamp(val / target, 0, 1));
+      const pct = round(frac * 100, 1);
+      const title = logged ? `${formatShort(d)} · ${round(val)}${mk.key === 'calories' ? '' : 'g'} of ${target}` : `${formatShort(d)} · nothing logged`;
+      return `<div class="nstrip-cell" title="${esc(title)}">${pct > 0 ? `<div class="nstrip-fill" style="height:${pct}%; background:${mk.color};"></div>` : ''}</div>`;
     }).join('');
-    return `<div class="nstrip-row">${cols}</div>`;
+    return `<button class="nstrip-day ${isToday ? 'is-today' : ''}" onclick="jumpToDayFromDash('${d}')">
+      ${cells}<div class="nstrip-daylabel">${dayLetters[i]}</div>
+    </button>`;
   }).join('');
-  const dayLabels = dayLetters.map((l, i) => `<div class="nstrip-daylabel ${weekDays[i] === today ? 'w600' : ''}">${l}</div>`).join('');
 
   const todayTotals = dayTotals(getDayLog(today));
-  const rightNums = [
-    { label: 'cal', val: S.dashMode === 'remaining' ? round(t.calories - todayTotals.calories) : round(todayTotals.calories), of: t.calories, suf: '' },
-    { label: 'P', val: S.dashMode === 'remaining' ? round(t.protein - todayTotals.protein) : round(todayTotals.protein), of: t.protein, suf: 'g' },
-    { label: 'F', val: S.dashMode === 'remaining' ? round(t.fat - todayTotals.fat) : round(todayTotals.fat), of: t.fat, suf: 'g' },
-    { label: 'C', val: S.dashMode === 'remaining' ? round(t.carbs - todayTotals.carbs) : round(todayTotals.carbs), of: t.carbs, suf: 'g' },
-  ];
+  const rem = S.dashMode === 'remaining';
+  const summary = [
+    { key: 'calories', label: 'Cal', suf: '', color: 'var(--calories)' },
+    { key: 'protein', label: 'Protein', suf: 'g', color: 'var(--brick)' },
+    { key: 'fat', label: 'Fat', suf: 'g', color: 'var(--amber)' },
+    { key: 'carbs', label: 'Carbs', suf: 'g', color: 'var(--carbs)' },
+  ].map((m) => {
+    const val = rem ? round(t[m.key] - todayTotals[m.key]) : round(todayTotals[m.key]);
+    return `<div>
+      <div class="v mono" style="color:${m.color};">${val}${m.suf}</div>
+      <div class="l">of ${t[m.key]}${m.suf} ${m.label}</div>
+    </div>`;
+  }).join('');
 
   const weeklyPage = `
-    <div class="row between mb2"><span class="w600 t14">Weekly nutrition</span></div>
-    <div class="row g4">
-      <div class="flex1">${stripRows}<div class="row">${dayLabels}</div></div>
-      <div class="col g2" style="text-align:right;">
-        ${rightNums.map((r) => `<div><span class="mono w700 t16">${r.val}${r.suf}</span><div class="fainter t10">of ${r.of}${r.suf} ${r.label}</div></div>`).join('')}
+    <div class="row between mb3">
+      <span class="w600 t14">Weekly nutrition</span>
+      <div class="pill-toggle" style="width:auto;">
+        <button class="${!rem ? 'active' : ''}" style="padding:6px 12px;" onclick="setDashMode('consumed')">Consumed</button>
+        <button class="${rem ? 'active' : ''}" style="padding:6px 12px;" onclick="setDashMode('remaining')">Remaining</button>
       </div>
     </div>
-    <div class="pill-toggle mt3">
-      <button class="${S.dashMode === 'consumed' ? 'active' : ''}" onclick="setDashMode('consumed')">Consumed</button>
-      <button class="${S.dashMode === 'remaining' ? 'active' : ''}" onclick="setDashMode('remaining')">Remaining</button>
-    </div>`;
+    <div class="nstrip-summary mb3">${summary}</div>
+    <div class="nstrip flex1">${stripDays}</div>`;
 
   return `
   <div class="dash-carousel-wrap">
@@ -1865,6 +1879,10 @@ function renderMealTimeline(cd, dayLog) {
 }
 
 function jumpToDate(d) { S.currentDate = d; render(); }
+// Tapping a day column on the dashboard opens that day's food log — the
+// column is the only place you can see a day is short and want to inspect it.
+function jumpToDayFromDash(d) { window.scrollTo(0, 0); S.currentDate = d; S.activeTab = 'log'; render(); }
+window.jumpToDayFromDash = jumpToDayFromDash;
 window.jumpToDate = jumpToDate;
 function setWeighInDate(d) { S.weighInDate = d; render(); }
 window.setWeighInDate = setWeighInDate;
