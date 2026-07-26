@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Setpoint">
+<meta name="apple-mobile-web-app-title" content="Tare">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#15181A">
-<title>Setpoint</title>
+<title>Tare</title>
 <link id="manifest-link" rel="manifest">
 <link id="apple-icon-link" rel="apple-touch-icon">
 <link id="favicon-link" rel="icon">
@@ -219,9 +219,12 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 /* dashboard carousel */
 .dash-carousel-wrap { margin-bottom: 14px; }
-.dash-carousel { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+/* align-items:flex-start stops short pages being stretched to the tallest
+   page's height; JS then sets the height to whichever page is showing, so
+   there's no dead space under the shorter panels. */
+.dash-carousel { display: flex; align-items: flex-start; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; transition: height 220ms ease; }
 .dash-carousel::-webkit-scrollbar { display: none; }
-.dash-page { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; }
+.dash-page { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; align-self: flex-start; }
 .dash-page .card { margin-bottom: 0; }
 .dash-dots { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
 .dash-dot { width: 6px; height: 6px; border-radius: 3px; background: var(--line-strong); border: none; padding: 0; cursor: pointer; transition: all 180ms ease; }
@@ -292,6 +295,9 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 // account, so it syncs across devices and isn't lost if this browser's
 // storage is cleared.
 // ---------------------------------------------------------------------
+// Storage namespace keeps the old name deliberately: it isn't user-visible,
+// and onAuthReady migrates pre-Firebase local data out of these keys.
+// Renaming it would orphan any data still sitting there.
 const NS = 'setpoint:';
 function readKey(k) {
   try {
@@ -668,7 +674,7 @@ function render() {
   if (S.activeTab === 'dashboard') setTimeout(setupDashCarousel, 0);
 }
 function renderTopBar() {
-  return `<div class="row between mb4"><span class="app-title">Setpoint</span></div>`;
+  return `<div class="row between mb4"><span class="app-title">Tare</span></div>`;
 }
 function renderActiveTab() {
   if (S.activeTab === 'dashboard') return renderDashboard();
@@ -967,11 +973,11 @@ function renderAuthScreen() {
     <div class="col center" style="min-height:100vh; padding: 24px 16px;">
       <div style="width:100%; max-width:380px;">
         <div class="col center mb4" style="text-align:center;">
-          <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Setpoint</div>
+          <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Tare</div>
         </div>
         <div class="card">
           <div class="w600 t14 mb2">Couldn't connect</div>
-          <div class="faint t13" style="line-height:1.6;">Setpoint couldn't reach the sign-in service. This usually means you're offline or the connection was blocked. Check your connection and reload the page.</div>
+          <div class="faint t13" style="line-height:1.6;">Tare couldn't reach the sign-in service. This usually means you're offline or the connection was blocked. Check your connection and reload the page.</div>
           <button class="btn btn-primary btn-block mt3" onclick="location.reload()">Reload</button>
         </div>
       </div>
@@ -981,7 +987,7 @@ function renderAuthScreen() {
   <div class="col center" style="min-height:100vh; padding: 24px 16px;">
     <div style="width:100%; max-width:380px;">
       <div class="col center mb4" style="text-align:center;">
-        <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Setpoint</div>
+        <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Tare</div>
         <div class="faint t13 mt1">${isSignup ? 'Create your account to get started.' : 'Sign in to your tracker.'}</div>
       </div>
       <div class="card">
@@ -1036,7 +1042,7 @@ async function requestPasswordReset() {
 window.requestPasswordReset = requestPasswordReset;
 
 function signOutUser() {
-  if (!confirm('Sign out of Setpoint?')) return;
+  if (!confirm('Sign out of Tare?')) return;
   window.FB.signOutUser();
 }
 window.signOutUser = signOutUser;
@@ -1046,8 +1052,8 @@ function renderOnboarding() {
   <div class="col center" style="min-height:100vh; padding: 24px 16px;">
     <div style="width:100%; max-width:420px;">
       <div class="col center mb4" style="text-align:center;">
-        <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Setpoint</div>
-        <div class="faint t13 mt1">A few numbers to set your starting targets. Adjust anything later — Setpoint refines targets from your real data as you log.</div>
+        <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Tare</div>
+        <div class="faint t13 mt1">A few numbers to set your starting targets. Adjust anything later — Tare refines targets from your real data as you log.</div>
       </div>
       <div class="card">
         <div class="grid2">
@@ -1273,11 +1279,25 @@ function renderEnergyBalanceBigPage() {
 // ---------------------------------------------------------------------
 // Dashboard carousel mechanics (native scroll-snap; no library)
 // ---------------------------------------------------------------------
+// The carousel's pages differ in height. Without this it would size to the
+// tallest one, leaving a large dead gap under the shorter panels before the
+// next section.
+function syncDashHeight() {
+  const el = document.getElementById('dash-carousel');
+  if (!el) return;
+  const page = el.querySelector(`.dash-page[data-page="${S.dashPage}"]`);
+  if (!page) return;
+  const h = page.getBoundingClientRect().height;
+  if (h > 0) el.style.height = `${Math.ceil(h)}px`;
+}
+window.addEventListener('resize', syncDashHeight);
+
 function scrollToDashPage(i) {
   S.dashPage = i;
   const el = document.getElementById('dash-carousel');
   if (el) el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
   document.querySelectorAll('.dash-dot').forEach((d, idx) => d.classList.toggle('active', idx === i));
+  syncDashHeight();
 }
 window.scrollToDashPage = scrollToDashPage;
 let dashObserver = null;
@@ -1285,6 +1305,7 @@ function setupDashCarousel() {
   const el = document.getElementById('dash-carousel');
   if (!el) return;
   el.scrollLeft = S.dashPage * el.clientWidth;
+  syncDashHeight();
   if (dashObserver) dashObserver.disconnect();
   dashObserver = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
@@ -1292,6 +1313,7 @@ function setupDashCarousel() {
         const idx = Number(entry.target.getAttribute('data-page'));
         S.dashPage = idx;
         document.querySelectorAll('.dash-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+        syncDashHeight();
       }
     });
   }, { root: el, threshold: 0.5 });
@@ -2349,9 +2371,9 @@ function renderMore() {
   </div>
 
   <div class="card">
-    <div class="w600 t14 mb2">About Setpoint</div>
+    <div class="w600 t14 mb2">About Tare</div>
     <div class="faint t12" style="line-height:1.6;">
-      Setpoint estimates your maintenance calories from a formula at first, then — once you've logged weight and food consistently — recalculates it from what actually happened to your trend weight versus what you ate. That's what "Update targets from your data" on the Strategy tab does.<br><br>
+      Tare estimates your maintenance calories from a formula at first, then — once you've logged weight and food consistently — recalculates it from what actually happened to your trend weight versus what you ate. That's what "Update targets from your data" on the Strategy tab does.<br><br>
       This is a simplified personal tool, not medical advice. Treat targets as a helpful estimate, and check in with a doctor or dietitian for anything health-critical.<br><br>
       Food search uses the free, open Open Food Facts database and requires an internet connection. Everything else works offline — your data is stored only in this browser's local storage.
     </div>
@@ -2363,7 +2385,7 @@ function exportData() {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `setpoint-backup-${todayKey()}.json`;
+  a.href = url; a.download = `tare-backup-${todayKey()}.json`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   toast('Backup downloaded');
@@ -2380,13 +2402,13 @@ function importData(e) {
       S.profile = data.profile; S.targets = data.targets; S.logs = data.logs || {}; S.savedFoods = data.savedFoods || [];
       persistProfile(); persistTargets(); persistLogs(); persistSavedFoods();
       render(); toast('Backup restored');
-    } catch (err) { toast('Could not read that file — is it a Setpoint backup?'); }
+    } catch (err) { toast('Could not read that file — is it a Tare backup?'); }
   };
   reader.readAsText(file);
 }
 window.importData = importData;
 async function resetAllData() {
-  if (!confirm('Erase ALL Setpoint data for this account? This cannot be undone.')) return;
+  if (!confirm('Erase ALL Tare data for this account? This cannot be undone.')) return;
   const empty = { profile: null, targets: null, logs: {}, savedFoods: [] };
   S.profile = null; S.targets = null; S.logs = {}; S.savedFoods = [];
   S.activeTab = 'dashboard'; S.currentDate = todayKey();
@@ -2436,7 +2458,7 @@ applyTheme();
   document.getElementById('favicon-link').setAttribute('href', iconDataUri);
   const bg = currentTheme === 'dark' ? '#15181A' : '#FAFAF7';
   const manifest = {
-    name: 'Setpoint', short_name: 'Setpoint', start_url: '.', display: 'standalone',
+    name: 'Tare', short_name: 'Tare', start_url: '.', display: 'standalone',
     background_color: bg, theme_color: bg,
     icons: [{ src: iconDataUri, sizes: 'any', type: 'image/svg+xml' }],
   };
