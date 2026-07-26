@@ -271,7 +271,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
   } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
   import {
     initializeFirestore, persistentLocalCache, persistentSingleTabManager,
-    getFirestore, doc, getDoc, setDoc,
+    getFirestore, doc, getDoc, setDoc, collection, getDocs, writeBatch, deleteField,
   } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -315,6 +315,24 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
     // setDoc's promise only settles once the server acknowledges, which may be
     // hours away. The write is durable in IndexedDB as soon as this returns.
     setUserDoc: (uid, data) => setDoc(doc(fbDb, 'users', uid), data, { merge: true }),
+
+    // ---- Log shards: users/{uid}/logs/{YYYY-MM} ----
+    // Logs used to live as one `logs` map on the user document. Firestore caps
+    // a document at 1 MiB, which at roughly 250 bytes per entry is a couple of
+    // years of logging, after which EVERY write fails. Months are separate
+    // documents so a write only ever rewrites the month it touched.
+    getLogShards: (uid) => getDocs(collection(fbDb, 'users', uid, 'logs')),
+    setLogShard: (uid, month, days) =>
+      setDoc(doc(fbDb, 'users', uid, 'logs', month), { days }, { merge: false }),
+    writeLogShards: (uid, shards) => {
+      const batch = writeBatch(fbDb);
+      Object.keys(shards).forEach((m) => {
+        batch.set(doc(fbDb, 'users', uid, 'logs', m), { days: shards[m] }, { merge: false });
+      });
+      return batch.commit();
+    },
+    // Only called AFTER shards are confirmed written.
+    clearLegacyLogs: (uid) => setDoc(doc(fbDb, 'users', uid), { logs: deleteField() }, { merge: true }),
   };
 
   onAuthStateChanged(fbAuth, (user) => {
@@ -647,7 +665,51 @@ const S = {
 };
 let currentUid = null;
 
-function persistLogs() { saveField('logs', S.logs); }
+// ---------------------------------------------------------------------
+// Log storage: one Firestore document per month
+//
+// Logs previously lived as a single `logs` map on the user document, so every
+// food added rewrote the entire history. Firestore caps a document at 1 MiB —
+// roughly 4,000 entries — after which every write fails. Months are separate
+// documents, so a write only rewrites the month it touched.
+//
+// knownShardMonths tracks months that exist server-side, including any whose
+// last entry was just deleted: those still need an (empty) write, and they
+// wouldn't appear in a scan of S.logs.
+// ---------------------------------------------------------------------
+function monthOf(dateKey) { return String(dateKey).slice(0, 7); }
+let knownShardMonths = new Set();
+
+function shardFor(month) {
+  const days = {};
+  Object.keys(S.logs).forEach((dk) => { if (monthOf(dk) === month) days[dk] = S.logs[dk]; });
+  return days;
+}
+
+// months omitted = rewrite everything (import, restore, reset).
+function persistLogs(months) {
+  if (!currentUid) return;
+  const live = new Set(Object.keys(S.logs).map(monthOf));
+  const target = months ? new Set(months) : new Set([...live, ...knownShardMonths]);
+  const shards = {};
+  target.forEach((m) => {
+    if (!/^\d{4}-\d{2}$/.test(m)) return;
+    shards[m] = shardFor(m);
+    knownShardMonths.add(m);
+  });
+  if (!Object.keys(shards).length) return;
+
+  pendingWrites++;
+  updateSyncIndicator();
+  Promise.resolve(window.FB.writeLogShards(currentUid, shards))
+    .then(() => { pendingWrites = Math.max(0, pendingWrites - 1); updateSyncIndicator(); })
+    .catch((e) => {
+      pendingWrites = Math.max(0, pendingWrites - 1);
+      updateSyncIndicator();
+      console.error('log save failed', e);
+      toast('Could not save — your change is stored on this device only.');
+    });
+}
 function persistSavedFoods() { saveField('savedFoods', S.savedFoods); }
 function persistProfile() { saveField('profile', S.profile); }
 function persistTargets() { saveField('targets', S.targets); }
@@ -679,7 +741,53 @@ function saveField(key, value) {
 }
 
 function getDayLog(dateKey) { return S.logs[dateKey] || { weightLbs: null, foods: [] }; }
-function setDayLog(dateKey, next) { S.logs = Object.assign({}, S.logs, { [dateKey]: next }); persistLogs(); }
+function setDayLog(dateKey, next) {
+  S.logs = Object.assign({}, S.logs, { [dateKey]: next });
+  persistLogs([monthOf(dateKey)]); // only the affected month is rewritten
+}
+
+async function loadLogShards(uid) {
+  const logs = {};
+  try {
+    const snap = await window.FB.getLogShards(uid);
+    snap.forEach((d) => {
+      knownShardMonths.add(d.id);
+      Object.assign(logs, (d.data() || {}).days || {});
+    });
+  } catch (e) {
+    console.error('could not read log shards', e);
+  }
+  return logs;
+}
+
+// One-time move of the legacy `logs` map into month documents.
+//
+// Ordering is the whole point: shards are written and ACKNOWLEDGED before the
+// old field is cleared. If this is interrupted — killed app, dead connection —
+// the worst case is data existing in both places, which the loader merges
+// harmlessly. It never deletes first.
+//
+// Runs only while online. Offline, the shard write would sit in the queue
+// unacknowledged and the clear must not proceed on faith.
+async function migrateLogsToShards(uid) {
+  if (!navigator.onLine) return;
+  const months = new Set(Object.keys(S.logs).map(monthOf));
+  const shards = {};
+  months.forEach((m) => { if (/^\d{4}-\d{2}$/.test(m)) shards[m] = shardFor(m); });
+  if (!Object.keys(shards).length) {
+    try { await window.FB.clearLegacyLogs(uid); } catch (e) { /* retried next boot */ }
+    return;
+  }
+  try {
+    await window.FB.writeLogShards(uid, shards);   // must be acknowledged first
+    Object.keys(shards).forEach((m) => knownShardMonths.add(m));
+    await window.FB.clearLegacyLogs(uid);          // only now is it safe
+    console.info(`migrated ${Object.keys(S.logs).length} days into ${Object.keys(shards).length} month shards`);
+  } catch (e) {
+    // Legacy data is untouched, so the next sign-in simply tries again.
+    console.error('log migration deferred:', e);
+  }
+}
 
 // ---------------------------------------------------------------------
 // Auth-gated boot: wait for Firebase to report sign-in state, then load
@@ -693,14 +801,27 @@ window.onAuthReady = async function (user) {
     render(); return;
   }
   currentUid = user.uid;
+  knownShardMonths = new Set();
   try {
     const snap = await window.FB.getUserDoc(user.uid);
     if (snap.exists()) {
       const data = snap.data();
       S.profile = data.profile || null;
       S.targets = data.targets || null;
-      S.logs = data.logs || {};
       S.savedFoods = data.savedFoods || [];
+
+      // Month shards are the source of truth. A legacy `logs` map means this
+      // account hasn't migrated yet.
+      const sharded = await loadLogShards(user.uid);
+      const legacy = data.logs || null;
+      if (legacy && Object.keys(legacy).length) {
+        // Shards win on conflict — they're necessarily newer than the field
+        // they replaced.
+        S.logs = Object.assign({}, legacy, sharded);
+        migrateLogsToShards(user.uid);   // background; never blocks the UI
+      } else {
+        S.logs = sharded;
+      }
     } else {
       // Brand new account — check for pre-existing local data from before
       // Firebase was added, and offer it a home instead of losing it.
@@ -710,7 +831,8 @@ window.onAuthReady = async function (user) {
         S.targets = readKey('targets');
         S.logs = readKey('logs') || {};
         S.savedFoods = readKey('savedFoods') || [];
-        await window.FB.setUserDoc(user.uid, { profile: S.profile, targets: S.targets, logs: S.logs, savedFoods: S.savedFoods });
+        await window.FB.setUserDoc(user.uid, { profile: S.profile, targets: S.targets, savedFoods: S.savedFoods });
+        persistLogs(); // writes month shards rather than the legacy logs field
         toast('Imported your existing data into this account');
       }
     }
@@ -2873,11 +2995,21 @@ window.importData = importData;
 async function resetAllData() {
   if (!confirm('Erase ALL Tare data for this account? This cannot be undone.')) return;
   const empty = { profile: null, targets: null, logs: {}, savedFoods: [] };
+  const uid = currentUid;
+  const shardMonths = new Set(knownShardMonths);
   S.profile = null; S.targets = null; S.logs = {}; S.savedFoods = [];
   S.activeTab = 'dashboard'; S.currentDate = todayKey();
-  if (currentUid) {
-    try { await window.FB.setUserDoc(currentUid, empty); }
-    catch (e) { console.error('reset failed', e); toast('Could not reset — check your connection.'); return; }
+  if (uid) {
+    try {
+      await window.FB.setUserDoc(uid, empty);
+      // Emptying the user document does NOT touch its subcollections, so the
+      // month shards would survive and repopulate on the next sign-in.
+      if (shardMonths.size) {
+        const blanked = {};
+        shardMonths.forEach((m) => { blanked[m] = {}; });
+        await window.FB.writeLogShards(uid, blanked);
+      }
+    } catch (e) { console.error('reset failed', e); toast('Could not reset — check your connection.'); return; }
   }
   render(); toast('All data erased');
 }
