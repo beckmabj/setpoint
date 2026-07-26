@@ -186,6 +186,13 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .scan-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px calc(18px + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); }
 .scan-btn { border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.35); color: #fff; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
+
+/* Connection state, shown persistently in the top bar rather than as a toast */
+.sync-pill { display: inline-flex; align-items: center; min-height: 18px; }
+.sync-pill > span { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.sync-off { background: var(--tan-soft); color: var(--ink-faint); }
+.sync-warn { background: var(--brick-soft); color: var(--brick); }
+.sync-syncing { background: var(--teal-soft); color: var(--teal); }
 /* Lets a grid2 card go full-width when its expanded content needs the room */
 .grid2 > .span2 { grid-column: 1 / -1; }
 
@@ -263,6 +270,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
     signInWithEmailAndPassword, signOut, sendPasswordResetEmail,
   } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
   import {
+    initializeFirestore, persistentLocalCache, persistentSingleTabManager,
     getFirestore, doc, getDoc, setDoc,
   } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
@@ -277,7 +285,25 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
   const fbApp = initializeApp(firebaseConfig);
   const fbAuth = getAuth(fbApp);
-  const fbDb = getFirestore(fbApp);
+
+  // Persistent local cache (IndexedDB). Without it Firestore keeps everything
+  // in memory only: a write made with no connection is lost the moment the
+  // app is closed, even though the UI already showed the food as logged.
+  // With it, writes are durably queued on the device and flushed on reconnect.
+  //
+  // Single-tab manager rather than multi-tab: this is a phone app, and the
+  // multi-tab coordinator adds leader-election overhead we don't need.
+  let fbDb;
+  try {
+    fbDb = initializeFirestore(fbApp, {
+      localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }),
+    });
+  } catch (err) {
+    // Private browsing, blocked storage, or a second tab winning the lock.
+    console.error('persistent cache unavailable, falling back to memory:', err);
+    fbDb = getFirestore(fbApp);
+    window.__tarePersistenceFailed = true;
+  }
 
   window.FB = {
     createUser: (email, pw) => createUserWithEmailAndPassword(fbAuth, email, pw),
@@ -285,6 +311,9 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
     signOutUser: () => signOut(fbAuth),
     resetPassword: (email) => sendPasswordResetEmail(fbAuth, email),
     getUserDoc: (uid) => getDoc(doc(fbDb, 'users', uid)),
+    // Deliberately NOT awaited by callers when offline: with persistence on,
+    // setDoc's promise only settles once the server acknowledges, which may be
+    // hours away. The write is durable in IndexedDB as soon as this returns.
     setUserDoc: (uid, data) => setDoc(doc(fbDb, 'users', uid), data, { merge: true }),
   };
 
@@ -618,14 +647,35 @@ const S = {
 };
 let currentUid = null;
 
-async function persistLogs() { await saveField('logs', S.logs); }
-async function persistSavedFoods() { await saveField('savedFoods', S.savedFoods); }
-async function persistProfile() { await saveField('profile', S.profile); }
-async function persistTargets() { await saveField('targets', S.targets); }
-async function saveField(key, value) {
+function persistLogs() { saveField('logs', S.logs); }
+function persistSavedFoods() { saveField('savedFoods', S.savedFoods); }
+function persistProfile() { saveField('profile', S.profile); }
+function persistTargets() { saveField('targets', S.targets); }
+// Number of writes queued locally but not yet acknowledged by the server.
+let pendingWrites = 0;
+
+// With persistent caching on, setUserDoc resolves only when the SERVER
+// acknowledges. Offline that can be hours, so this deliberately does NOT
+// await it before returning — the write is already durable in IndexedDB, and
+// blocking here would freeze the UI. We track the promise purely to drive the
+// "syncing / offline" indicator, and only surface a real error.
+function saveField(key, value) {
   if (!currentUid) return;
-  try { await window.FB.setUserDoc(currentUid, { [key]: value }); }
-  catch (e) { console.error('save failed', key, e); toast('Could not save to your account — check your connection.'); }
+  pendingWrites++;
+  updateSyncIndicator();
+  Promise.resolve(window.FB.setUserDoc(currentUid, { [key]: value }))
+    .then(() => {
+      pendingWrites = Math.max(0, pendingWrites - 1);
+      updateSyncIndicator();
+    })
+    .catch((e) => {
+      pendingWrites = Math.max(0, pendingWrites - 1);
+      updateSyncIndicator();
+      // A rejection here is a genuine failure (permissions, quota, malformed
+      // data) — not merely being offline, which queues instead of rejecting.
+      console.error('save failed', key, e);
+      toast('Could not save — your change is stored on this device only.');
+    });
 }
 
 function getDayLog(dateKey) { return S.logs[dateKey] || { weightLbs: null, foods: [] }; }
@@ -687,8 +737,34 @@ function render() {
   if (S.activeTab === 'dashboard') setTimeout(setupDashCarousel, 0);
 }
 function renderTopBar() {
-  return `<div class="row between mb4"><span class="app-title">Tare</span></div>`;
+  return `<div class="row between mb4">
+    <span class="app-title">Tare</span>
+    <span id="sync-pill" class="sync-pill">${syncPillContent()}</span>
+  </div>`;
 }
+
+// Persistent connection state, not a transient toast. Offline writes are safe
+// (queued in IndexedDB) but the user should be able to see that they haven't
+// reached the server yet.
+function syncPillContent() {
+  if (window.__tarePersistenceFailed) {
+    return `<span class="sync-warn">${iconCloudOff} not saving offline</span>`;
+  }
+  if (!navigator.onLine) {
+    return `<span class="sync-off">${iconCloudOff} offline${pendingWrites ? ` · ${pendingWrites} queued` : ''}</span>`;
+  }
+  if (pendingWrites > 0) return `<span class="sync-syncing">syncing…</span>`;
+  return '';
+}
+
+// Patches the pill in place — a full render() here would destroy focus while
+// the user is typing, and this fires on every save.
+function updateSyncIndicator() {
+  const el = document.getElementById('sync-pill');
+  if (el) el.innerHTML = syncPillContent();
+}
+window.addEventListener('online', updateSyncIndicator);
+window.addEventListener('offline', updateSyncIndicator);
 function renderActiveTab() {
   if (S.activeTab === 'dashboard') return renderDashboard();
   if (S.activeTab === 'log') return renderLog();
@@ -732,6 +808,7 @@ const iconSearch = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" 
 const iconBarcode = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5v14M7 5v14M10 5v14M13 5v14M15 5v14M18 5v14M21 5v14" stroke-width="1.6"/></svg>`;
 const iconHeart = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 6.6a5 5 0 0 0-7.1 0L12 8.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 22l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>`;
 const iconHeartFull = `<svg width="17" height="17" viewBox="0 0 24 24" fill="var(--brick)" stroke="var(--brick)" stroke-width="2" stroke-linejoin="round"><path d="M20.8 6.6a5 5 0 0 0-7.1 0L12 8.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 22l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>`;
+const iconCloudOff = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M8.5 7.2A5 5 0 0 1 18 9h.5a3.5 3.5 0 0 1 2.5 6"/><path d="M16 18H6.5A3.5 3.5 0 0 1 6 11a5 5 0 0 1 .6-1.6"/></svg>`;
 const iconClock = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
 const iconCamera = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.2l1.1-2h8.4l1.1 2h2.2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.4"/></svg>`;
 const iconZap = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>`;
