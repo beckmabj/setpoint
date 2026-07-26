@@ -182,6 +182,14 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .scan-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px calc(18px + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); }
 .scan-btn { border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.35); color: #fff; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
+
+/* Meal timeline: foods grouped by the hour they were logged */
+.meal-group { margin-bottom: 16px; }
+.meal-hour { font-size: 12px; font-weight: 600; color: var(--ink-faint); background: var(--tan-soft); border-radius: 999px; padding: 3px 10px; }
+.meal-add { border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-fainter); border-radius: 999px; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; -webkit-tap-highlight-color: transparent; }
+.meal-add svg { width: 13px; height: 13px; }
+.meal-add:hover { color: var(--teal); border-color: var(--teal); }
+.meal-item { display: flex; align-items: center; gap: 8px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
 @media (min-width: 480px) { .overlay { align-items: center; } .sheet { border-radius: 18px; max-height: 80vh; } }
 
 /* food picker tabs reuse .pill-toggle */
@@ -344,6 +352,49 @@ function dayOfMonth(dateKey) { return Number(dateKey.split('-')[2]); }
 function round(n, p) { p = p || 0; const f = Math.pow(10, p); return Math.round((n + Number.EPSILON) * f) / f; }
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+// ---------------------------------------------------------------------
+// Serving units
+//
+// Nutrition data is per 100g, so every unit resolves to grams. "serving" is
+// only offered when the food declares a serving weight; otherwise there is
+// nothing to convert against.
+// ---------------------------------------------------------------------
+const GRAMS_PER_OZ = 28.349523125;
+const GRAMS_PER_LB = 453.59237;
+
+function unitToGrams(amount, unit, servingGrams) {
+  const n = Number(amount) || 0;
+  if (unit === 'oz') return n * GRAMS_PER_OZ;
+  if (unit === 'lb') return n * GRAMS_PER_LB;
+  if (unit === 'serving') return n * (Number(servingGrams) || 0);
+  return n; // grams
+}
+
+function unitsFor(food) {
+  const base = ['g', 'oz', 'lb'];
+  return (food && Number(food.servingGrams) > 0) ? base.concat(['serving']) : base;
+}
+
+// Macros for a given amount of a per-100g food.
+function macrosFor(food, amount, unit) {
+  const g = unitToGrams(amount, unit, food.servingGrams);
+  return {
+    calories: round((food.caloriesPer100 * g) / 100),
+    protein: round((food.proteinPer100 * g) / 100, 1),
+    carbs: round((food.carbsPer100 * g) / 100, 1),
+    fat: round((food.fatPer100 * g) / 100, 1),
+  };
+}
+
+function amountLabel(amount, unit, servingGrams) {
+  const n = round(Number(amount) || 0, 2);
+  if (unit === 'serving') {
+    const g = round(unitToGrams(n, unit, servingGrams));
+    return `${n} serving${n === 1 ? '' : 's'} · ${g}g`;
+  }
+  return `${n}${unit}`;
+}
 
 function bmrMifflin(p) {
   const kg = p.weightLbs / 2.20462, cm = p.heightIn * 2.54;
@@ -660,6 +711,9 @@ const iconTrash = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" s
 const iconScale = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 7v5l3 2"/></svg>`;
 const iconSearch = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>`;
 const iconBarcode = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5v14M7 5v14M10 5v14M13 5v14M15 5v14M18 5v14M21 5v14" stroke-width="1.6"/></svg>`;
+const iconHeart = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 6.6a5 5 0 0 0-7.1 0L12 8.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 22l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>`;
+const iconHeartFull = `<svg width="17" height="17" viewBox="0 0 24 24" fill="var(--brick)" stroke="var(--brick)" stroke-width="2" stroke-linejoin="round"><path d="M20.8 6.6a5 5 0 0 0-7.1 0L12 8.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 22l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>`;
+const iconClock = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
 const iconCamera = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.2l1.1-2h8.4l1.1 2h2.2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.4"/></svg>`;
 const iconZap = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>`;
 const iconChefHat = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19h12M7 19v-6.2a5 5 0 0 1-2-4c0-2.8 2.2-5 5-5 .7 0 1.4.2 2 .4A5 5 0 0 1 21 8.8c0 1.8-1 3.4-2 4.2V19"/></svg>`;
@@ -703,7 +757,25 @@ function mapUsdaFood(f) {
     dataType: f.dataType || '',
     caloriesPer100: calories, proteinPer100: protein,
     carbsPer100: carbs, fatPer100: fat,
+    // Branded items usually declare a label serving; curated ones don't.
+    servingGrams: usdaServingGrams(f),
+    servingLabel: f.householdServingFullText || '',
   };
+}
+
+// USDA gives servingSize + servingSizeUnit on Branded foods. Only mass units
+// are usable here: "1 cup" or "3 pieces" can't be converted to grams without
+// a density we don't have.
+function usdaServingGrams(f) {
+  const size = Number(f.servingSize);
+  if (!size || !isFinite(size) || size <= 0) return null;
+  const unit = String(f.servingSizeUnit || '').toLowerCase();
+  if (unit === 'g' || unit === 'gram' || unit === 'grams') return size;
+  if (unit === 'oz') return size * GRAMS_PER_OZ;
+  if (unit === 'lb') return size * GRAMS_PER_LB;
+  // ml is treated as grams only for the purposes of a rough serving; skip it
+  // rather than invent a density.
+  return null;
 }
 
 // USDA's Branded tier is crowdsourced from label scans and contains entries
@@ -1383,15 +1455,7 @@ function renderLog() {
       <span>C ${round(totals.carbs)}/${t.carbs}</span>
     </div>`;
 
-  const foodItems = (dayLog.foods && dayLog.foods.length) ? dayLog.foods.map((f) => {
-    const time = new Date(Number(f.id)); const hh = String(time.getHours()).padStart(2, '0'); const mm = String(time.getMinutes()).padStart(2, '0');
-    return `<div class="row between" style="background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:6px;">
-      <div><div class="t14 w500">${esc(f.name)}</div>
-        <div class="t11 faint mono">${hh}:${mm} · ${esc(f.label)} · ${f.calories} kcal · P${round(f.protein)} F${round(f.fat)} C${round(f.carbs)}</div>
-      </div>
-      <button class="icon-btn" onclick="removeFood('${cd}','${f.id}')">${iconTrash}</button>
-    </div>`;
-  }).join('') : `<div class="card empty">Nothing logged ${formatDateLabel(cd).toLowerCase()} yet. Add your first food below.</div>`;
+  const foodItems = renderMealTimeline(cd, dayLog);
 
   return `
   <div class="row between mb3">
@@ -1419,6 +1483,71 @@ function renderLog() {
   ${foodItems}
   `;
 }
+// ---------------------------------------------------------------------
+// Meal timeline
+//
+// Foods group into the hour they were logged, rather than into fixed
+// "breakfast/lunch/dinner" buckets. The hours you actually eat at define
+// your meals, and each hour carries its own totals and an add button.
+// ---------------------------------------------------------------------
+function hourLabel(h) {
+  const period = h < 12 ? 'AM' : 'PM';
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display} ${period}`;
+}
+
+// A timestamp inside the given day at the given hour, for adding to a slot.
+function slotTimestamp(dateKey, hour) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(y, m - 1, d, hour, 0, 0, 0).getTime();
+}
+
+function renderMealTimeline(cd, dayLog) {
+  const foods = (dayLog.foods || []).slice().sort((a, b) => entryTime(a) - entryTime(b));
+  if (!foods.length) {
+    return `<div class="card empty">Nothing logged ${formatDateLabel(cd).toLowerCase()} yet. Add your first food above.</div>`;
+  }
+  // Group by the hour each entry was logged.
+  const byHour = new Map();
+  foods.forEach((f) => {
+    const h = new Date(entryTime(f)).getHours();
+    if (!byHour.has(h)) byHour.set(h, []);
+    byHour.get(h).push(f);
+  });
+
+  return Array.from(byHour.keys()).sort((a, b) => a - b).map((h) => {
+    const items = byHour.get(h);
+    const tot = items.reduce((s, f) => ({
+      calories: s.calories + (f.calories || 0), protein: s.protein + (f.protein || 0),
+      fat: s.fat + (f.fat || 0), carbs: s.carbs + (f.carbs || 0),
+    }), { calories: 0, protein: 0, fat: 0, carbs: 0 });
+
+    const rows = items.map((f) => {
+      const t = new Date(entryTime(f));
+      const mm = String(t.getMinutes()).padStart(2, '0');
+      const hh = String(t.getHours()).padStart(2, '0');
+      return `<div class="meal-item">
+        <div class="flex1">
+          <div class="t14 w500">${esc(f.name)}</div>
+          <div class="t11 faint mono">${hh}:${mm} · ${esc(f.label || '')} · ${round(f.calories)} kcal · P${round(f.protein)} F${round(f.fat)} C${round(f.carbs)}</div>
+        </div>
+        <button class="icon-btn" onclick="removeFood('${cd}','${f.id}')">${iconTrash}</button>
+      </div>`;
+    }).join('');
+
+    return `<div class="meal-group">
+      <div class="row between mb2">
+        <div class="row g2">
+          <span class="meal-hour mono">${hourLabel(h)}</span>
+          <button class="meal-add" onclick="openPicker('${cd}', ${slotTimestamp(cd, h)})" title="Add to this hour">${iconPlus}</button>
+        </div>
+        <span class="t11 mono faint">${round(tot.calories)} kcal · P${round(tot.protein)} F${round(tot.fat)} C${round(tot.carbs)}</span>
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
 function jumpToDate(d) { S.currentDate = d; render(); }
 window.jumpToDate = jumpToDate;
 function saveWeightFromInput(dateKey) {
@@ -1441,35 +1570,144 @@ function addFoodEntry(dateKey, entry) {
 }
 function saveFoodToLibrary(food) {
   const exists = S.savedFoods.some((f) => f.id === food.id);
-  S.savedFoods = exists ? S.savedFoods.map((f) => (f.id === food.id ? food : f)) : [food].concat(S.savedFoods);
+  S.savedFoods = exists
+    ? S.savedFoods.map((f) => (f.id === food.id ? Object.assign({}, f, food) : f))
+    : [food].concat(S.savedFoods);
   persistSavedFoods();
+}
+
+// ---------------------------------------------------------------------
+// Log entries
+//
+// Entries carry the food's per-100g values plus the amount and unit that
+// produced them. Without that, an entry can't be re-logged from Recents or
+// have its serving changed after the fact. Older entries predate these
+// fields; everything that reads them falls back gracefully.
+// ---------------------------------------------------------------------
+function buildEntry(food, amount, unit, atMs) {
+  const macros = macrosFor(food, amount, unit);
+  return Object.assign({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    at: atMs || Date.now(),
+    name: food.name,
+    brand: food.brand || '',
+    foodId: food.id || '',
+    amount: Number(amount) || 0,
+    unit,
+    servingGrams: food.servingGrams || null,
+    per100: {
+      calories: food.caloriesPer100, protein: food.proteinPer100,
+      carbs: food.carbsPer100, fat: food.fatPer100,
+    },
+    label: amountLabel(amount, unit, food.servingGrams),
+  }, macros);
+}
+
+// An entry becomes a food again for re-logging.
+function entryToFood(e) {
+  const p = e.per100;
+  if (!p) return null; // legacy entry, not re-loggable
+  return {
+    id: e.foodId || e.name, name: e.name, brand: e.brand || '',
+    caloriesPer100: p.calories, proteinPer100: p.protein,
+    carbsPer100: p.carbs, fatPer100: p.fat,
+    servingGrams: e.servingGrams || null,
+  };
+}
+
+function entryTime(e) {
+  const t = Number(e.at) || Number(String(e.id).split('-')[0]);
+  return isFinite(t) ? t : Date.now();
+}
+
+// Most recently logged foods across all days, de-duplicated, newest first.
+function recentFoods(limit) {
+  const seen = new Set();
+  const out = [];
+  const entries = [];
+  Object.keys(S.logs).forEach((dk) => {
+    (S.logs[dk].foods || []).forEach((e) => entries.push(e));
+  });
+  entries.sort((a, b) => entryTime(b) - entryTime(a));
+  for (const e of entries) {
+    const food = entryToFood(e);
+    if (!food) continue;
+    const key = (e.foodId || e.name).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ food, lastAmount: e.amount || 100, lastUnit: e.unit || 'g' });
+    if (out.length >= (limit || 40)) break;
+  }
+  return out;
+}
+
+// ---- Favorites -------------------------------------------------------
+function favKey(food) { return `fav-${food.id || food.name}`; }
+function isFavorite(food) {
+  return !!food && S.savedFoods.some((f) => f.id === favKey(food) && f.favorite);
+}
+function toggleFavorite() {
+  const p = S.picker;
+  const food = p.selectedOff || p.selectedRecent;
+  if (!food) return;
+  const key = favKey(food);
+  if (isFavorite(food)) {
+    S.savedFoods = S.savedFoods.filter((f) => f.id !== key);
+    persistSavedFoods();
+    toast('Removed from favorites');
+  } else {
+    saveFoodToLibrary({
+      id: key, favorite: true, name: food.name, brand: food.brand || '',
+      caloriesPer100: food.caloriesPer100, proteinPer100: food.proteinPer100,
+      carbsPer100: food.carbsPer100, fatPer100: food.fatPer100,
+      servingGrams: food.servingGrams || null,
+      calories: round(food.caloriesPer100), protein: round(food.proteinPer100, 1),
+      carbs: round(food.carbsPer100, 1), fat: round(food.fatPer100, 1), servingLabel: '100g',
+    });
+    toast('Added to favorites');
+  }
+  render();
+}
+window.toggleFavorite = toggleFavorite;
+
+function favoriteFoods() {
+  return S.savedFoods.filter((f) => f.favorite && f.caloriesPer100 != null);
 }
 
 // ---------------------------------------------------------------------
 // Food Picker (modal sheet: search Open Food Facts / saved library / custom)
 // ---------------------------------------------------------------------
-function openPicker(dateKey) {
-  S.picker = { forDate: dateKey, tab: 'search', query: '', results: [], status: 'idle', selectedOff: null, grams: 100, selectedSaved: null, multiplier: 1 };
+function openPicker(dateKey, atMs) {
+  S.picker = {
+    forDate: dateKey, at: atMs || null, tab: 'recent', query: '', results: [], status: 'idle',
+    selectedOff: null, selectedRecent: null, amount: 100, unit: 'g',
+    selectedSaved: null, multiplier: 1,
+  };
   render();
 }
 window.openPicker = openPicker;
 function closePicker() { S.picker = null; render(); }
 window.closePicker = closePicker;
-function setPickerTab(tab) { S.picker.tab = tab; S.picker.selectedOff = null; S.picker.selectedSaved = null; render(); }
+function setPickerTab(tab) {
+  S.picker.tab = tab;
+  S.picker.selectedOff = null; S.picker.selectedSaved = null; S.picker.selectedRecent = null;
+  render();
+}
 window.setPickerTab = setPickerTab;
 
 function renderPicker() {
   const p = S.picker;
   const tabBtn = (key, label) => `<button class="${p.tab === key ? 'active' : ''}" onclick="setPickerTab('${key}')">${label}</button>`;
   let body = '';
-  if (p.tab === 'search') body = renderPickerSearch();
+  if (p.tab === 'recent') body = renderPickerRecent();
+  else if (p.tab === 'search') body = renderPickerSearch();
   else if (p.tab === 'library') body = renderPickerLibrary();
   else body = renderPickerCustom();
 
   return `<div class="overlay" onclick="closePicker()">
     <div class="sheet" onclick="event.stopPropagation()">
       <div class="row between mb3"><span class="mono w600 t16">Add food</span><button class="icon-btn" onclick="closePicker()">${iconClose}</button></div>
-      <div class="pill-toggle mb3">${tabBtn('search', 'Search')}${tabBtn('library', 'My Foods')}${tabBtn('custom', 'Custom')}</div>
+      <div class="pill-toggle mb3">${tabBtn('recent', 'Recent')}${tabBtn('search', 'Search')}${tabBtn('library', 'My Foods')}${tabBtn('custom', 'Custom')}</div>
       ${body}
     </div>
   </div>`;
@@ -1478,13 +1716,15 @@ function renderPicker() {
 function renderPickerSearch() {
   const p = S.picker;
   if (p.selectedOff) {
-    const g = p.grams;
-    const prev = offPreview(p.selectedOff, g);
+    const f = p.selectedOff;
     return `
     <button class="btn btn-outline btn-sm mb2" onclick="backToOffResults()">${iconChevronL} back to results</button>
-    <div class="t15 w600 mb2">${esc(p.selectedOff.name)}</div>
-    <label class="field mb3"><span>Amount (grams)</span><input class="input" type="number" id="off-grams" value="${g}" step="5" oninput="updateOffPreview()"></label>
-    ${macroTiles('off-prev')}
+    <div class="row between mb2">
+      <div class="flex1"><div class="t15 w600">${esc(f.name)}</div>
+        ${f.brand ? `<div class="t12 faint">${esc(f.brand)}</div>` : ''}</div>
+      <button class="icon-btn" onclick="toggleFavorite()" title="Favorite">${isFavorite(f) ? iconHeartFull : iconHeart}</button>
+    </div>
+    ${amountControls('off')}
     <button class="btn btn-primary btn-block mt3" onclick="confirmOff()">Add to log</button>`;
   }
   return `
@@ -1503,11 +1743,132 @@ function renderPickerSearch() {
   `;
 }
 function offPreview(product, grams) {
-  return {
-    calories: round((product.caloriesPer100 * grams) / 100), protein: round((product.proteinPer100 * grams) / 100, 1),
-    carbs: round((product.carbsPer100 * grams) / 100, 1), fat: round((product.fatPer100 * grams) / 100, 1),
-  };
+  return macrosFor(product, grams, 'g');
 }
+
+// ---- Recent + Favorites tab -----------------------------------------
+function renderPickerRecent() {
+  const p = S.picker;
+  if (p.selectedRecent) {
+    const f = p.selectedRecent;
+    return `
+    <button class="btn btn-outline btn-sm mb2" onclick="backToRecents()">${iconChevronL} back</button>
+    <div class="row between mb2">
+      <div class="flex1"><div class="t15 w600">${esc(f.name)}</div>
+        ${f.brand ? `<div class="t12 faint">${esc(f.brand)}</div>` : ''}</div>
+      <button class="icon-btn" onclick="toggleFavorite()" title="Favorite">${isFavorite(f) ? iconHeartFull : iconHeart}</button>
+    </div>
+    ${amountControls('recent')}
+    <button class="btn btn-primary btn-block mt3" onclick="confirmRecent()">Add to log</button>`;
+  }
+
+  const favs = favoriteFoods();
+  const recents = recentFoods(30);
+  const row = (food, sub, onclick) => `
+    <button class="food-row" onclick="${onclick}">
+      <div><div class="t14 w500">${esc(food.name)}</div>
+        <div class="t12 faint mono">${food.brand ? esc(food.brand) + ' · ' : ''}${sub}</div></div>
+    </button>`;
+
+  let out = '';
+  if (favs.length) {
+    out += `<div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">FAVORITES</div>`;
+    out += favs.map((f, i) => row(f, `${round(f.caloriesPer100)} kcal / 100g`, `selectFavorite(${i})`)).join('');
+    out += `<div class="mb3"></div>`;
+  }
+  if (recents.length) {
+    out += `<div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">RECENT</div>`;
+    out += recents.map((r, i) => row(
+      r.food,
+      `last: ${amountLabel(r.lastAmount, r.lastUnit, r.food.servingGrams)}`,
+      `selectRecent(${i})`,
+    )).join('');
+  }
+  if (!out) {
+    out = `<div class="faint t13" style="padding:14px 0;">Nothing logged yet. Foods you log will show up here for one-tap re-logging, and you can favorite the ones you eat most.</div>`;
+  }
+  return out;
+}
+
+function selectRecent(i) {
+  const r = recentFoods(30)[i];
+  if (!r) return;
+  S.picker.selectedRecent = r.food;
+  S.picker.amount = r.lastAmount;
+  S.picker.unit = unitsFor(r.food).includes(r.lastUnit) ? r.lastUnit : 'g';
+  render();
+  setTimeout(() => onAmountChange('recent'), 0);
+}
+window.selectRecent = selectRecent;
+
+function selectFavorite(i) {
+  const f = favoriteFoods()[i];
+  if (!f) return;
+  S.picker.selectedRecent = f;
+  S.picker.amount = 100; S.picker.unit = 'g';
+  render();
+  setTimeout(() => onAmountChange('recent'), 0);
+}
+window.selectFavorite = selectFavorite;
+
+function backToRecents() { S.picker.selectedRecent = null; render(); }
+window.backToRecents = backToRecents;
+
+function confirmRecent() {
+  const p = S.picker;
+  addFoodEntry(p.forDate, buildEntry(p.selectedRecent, p.amount, p.unit, p.at));
+  closePicker(); toast('Added to log');
+}
+window.confirmRecent = confirmRecent;
+
+// ---------------------------------------------------------------------
+// Shared amount + unit control
+//
+// Used by the search, barcode, and recents add screens. `ctx` selects which
+// piece of state the control reads and writes, so one renderer and one pair
+// of handlers serve all of them.
+// ---------------------------------------------------------------------
+function ctxState(ctx) { return ctx === 'bc' ? S.barcode : S.picker; }
+function ctxFood(ctx) {
+  if (ctx === 'bc') return S.barcode.product;
+  if (ctx === 'recent') return S.picker.selectedRecent;
+  return S.picker.selectedOff;
+}
+
+function amountControls(ctx) {
+  const st = ctxState(ctx), food = ctxFood(ctx);
+  const units = unitsFor(food);
+  const unit = units.includes(st.unit) ? st.unit : 'g';
+  const grams = round(unitToGrams(st.amount, unit, food.servingGrams));
+  return `
+    <label class="field mb2"><span>Amount</span>
+      <input class="input" type="number" inputmode="decimal" step="any" id="${ctx}-amount" value="${st.amount}" oninput="onAmountChange('${ctx}')">
+    </label>
+    <div class="pill-toggle mb2">
+      ${units.map((u) => `<button class="${u === unit ? 'active' : ''}" onclick="setAmountUnit('${ctx}','${u}')">${u}</button>`).join('')}
+    </div>
+    <div class="t11 fainter mono mb3" id="${ctx}-grams">${grams}g total</div>
+    ${macroTiles(`${ctx}-prev`)}`;
+}
+
+function onAmountChange(ctx) {
+  const st = ctxState(ctx), food = ctxFood(ctx);
+  const el = document.getElementById(`${ctx}-amount`);
+  if (!el) return;
+  st.amount = Number(el.value) || 0;
+  const gEl = document.getElementById(`${ctx}-grams`);
+  if (gEl) gEl.textContent = `${round(unitToGrams(st.amount, st.unit, food.servingGrams))}g total`;
+  fillMacroTiles(`${ctx}-prev`, macrosFor(food, st.amount, st.unit));
+}
+window.onAmountChange = onAmountChange;
+
+function setAmountUnit(ctx, unit) {
+  const st = ctxState(ctx);
+  st.unit = unit;
+  render();
+  setTimeout(() => onAmountChange(ctx), 0);
+}
+window.setAmountUnit = setAmountUnit;
 function macroTiles(idPrefix) {
   return `<div class="grid4">
     <div class="macro-tile"><div class="v" id="${idPrefix}-cal">0</div><div class="l">Cal</div></div>
@@ -1538,22 +1899,21 @@ async function doPickerSearch(e) {
   render();
 }
 window.doPickerSearch = doPickerSearch;
-function selectOffResult(i) { S.picker.selectedOff = S.picker.results[i]; S.picker.grams = 100; render(); setTimeout(() => updateOffPreview(), 0); }
+function selectOffResult(i) {
+  const f = S.picker.results[i];
+  S.picker.selectedOff = f;
+  // Default to the declared serving when the food has one, else 100g.
+  if (Number(f.servingGrams) > 0) { S.picker.amount = 1; S.picker.unit = 'serving'; }
+  else { S.picker.amount = 100; S.picker.unit = 'g'; }
+  render();
+  setTimeout(() => onAmountChange('off'), 0);
+}
 window.selectOffResult = selectOffResult;
 function backToOffResults() { S.picker.selectedOff = null; render(); }
 window.backToOffResults = backToOffResults;
-function updateOffPreview() {
-  const grams = Number(document.getElementById('off-grams').value) || 0;
-  S.picker.grams = grams;
-  fillMacroTiles('off-prev', offPreview(S.picker.selectedOff, grams));
-}
-window.updateOffPreview = updateOffPreview;
 function confirmOff() {
-  const grams = S.picker.grams;
-  const prod = S.picker.selectedOff;
-  const macros = offPreview(prod, grams);
-  addFoodEntry(S.picker.forDate, Object.assign({ id: `${Date.now()}`, name: prod.name, label: `${grams}g` }, macros));
-  saveFoodToLibrary({ id: `off-${prod.id}`, name: prod.name, calories: round(prod.caloriesPer100), protein: round(prod.proteinPer100, 1), carbs: round(prod.carbsPer100, 1), fat: round(prod.fatPer100, 1), servingLabel: '100g' });
+  const p = S.picker;
+  addFoodEntry(p.forDate, buildEntry(p.selectedOff, p.amount, p.unit, p.at));
   closePicker(); toast('Added to log');
 }
 window.confirmOff = confirmOff;
@@ -1653,7 +2013,7 @@ function shortcutQuickAdd() {
 window.shortcutQuickAdd = shortcutQuickAdd;
 function shortcutBarcode() {
   const d = S.shortcuts.forDate; closeShortcuts();
-  S.barcode = { forDate: d, code: '', status: 'idle', product: null, grams: 100 };
+  S.barcode = { forDate: d, code: '', status: 'idle', product: null, amount: 100, unit: 'g' };
   render();
 }
 window.shortcutBarcode = shortcutBarcode;
@@ -1764,7 +2124,7 @@ function closeScanner() {
 window.closeScanner = closeScanner;
 
 function onBarcodeScanned(code) {
-  if (!S.barcode) S.barcode = { forDate: todayKey(), code: '', status: 'idle', product: null, grams: 100 };
+  if (!S.barcode) S.barcode = { forDate: todayKey(), code: '', status: 'idle', product: null, amount: 100, unit: 'g' };
   S.barcode.code = code;
   render();
   lookupBarcode(null, code);
@@ -1780,29 +2140,29 @@ async function lookupBarcode(e, codeOverride) {
     const data = await res.json();
     if (data.status === 1 && data.product && data.product.nutriments && data.product.nutriments['energy-kcal_100g'] != null) {
       const p = data.product;
+      // serving_quantity is grams when serving_quantity_unit says so; OFF is
+      // inconsistent, so only trust it when it looks like a mass.
+      const sq = Number(p.serving_quantity);
+      const squ = String(p.serving_quantity_unit || 'g').toLowerCase();
+      const servingGrams = (sq > 0 && (squ === 'g' || squ === 'gram' || squ === 'grams')) ? sq : null;
       S.barcode.product = {
         id: code, name: p.product_name || `Item ${code}`, brand: p.brands ? p.brands.split(',')[0].trim() : '',
         caloriesPer100: p.nutriments['energy-kcal_100g'] || 0, proteinPer100: p.nutriments['proteins_100g'] || 0,
         carbsPer100: p.nutriments['carbohydrates_100g'] || 0, fatPer100: p.nutriments['fat_100g'] || 0,
+        servingGrams,
       };
-      S.barcode.status = 'found'; S.barcode.grams = 100;
+      S.barcode.status = 'found';
+      if (servingGrams) { S.barcode.amount = 1; S.barcode.unit = 'serving'; }
+      else { S.barcode.amount = 100; S.barcode.unit = 'g'; }
     } else { S.barcode.status = 'notfound'; }
   } catch (err) { S.barcode.status = 'error'; }
   render();
-  if (S.barcode.status === 'found') setTimeout(() => updateBarcodePreview(), 0);
+  if (S.barcode.status === 'found') setTimeout(() => onAmountChange('bc'), 0);
 }
 window.lookupBarcode = lookupBarcode;
-function updateBarcodePreview() {
-  const grams = Number(document.getElementById('barcode-grams').value) || 0;
-  S.barcode.grams = grams;
-  fillMacroTiles('bc-prev', offPreview(S.barcode.product, grams));
-}
-window.updateBarcodePreview = updateBarcodePreview;
 function confirmBarcode() {
-  const prod = S.barcode.product, grams = S.barcode.grams;
-  const macros = offPreview(prod, grams);
-  addFoodEntry(S.barcode.forDate, Object.assign({ id: `${Date.now()}`, name: prod.name, label: `${grams}g` }, macros));
-  saveFoodToLibrary({ id: `off-${prod.id}`, name: prod.name, calories: round(prod.caloriesPer100), protein: round(prod.proteinPer100, 1), carbs: round(prod.carbsPer100, 1), fat: round(prod.fatPer100, 1), servingLabel: '100g' });
+  const b = S.barcode;
+  addFoodEntry(b.forDate, buildEntry(b.product, b.amount, b.unit, b.at));
   closeBarcodeSheet(); toast('Added to log');
 }
 window.confirmBarcode = confirmBarcode;
@@ -1822,8 +2182,7 @@ function renderBarcodeSheet() {
   if (b.status === 'found' && b.product) {
     body += `
       <div class="t15 w600 mb2">${esc(b.product.name)}${b.product.brand ? ` <span class="faint t12">· ${esc(b.product.brand)}</span>` : ''}</div>
-      <label class="field mb3"><span>Amount (grams)</span><input class="input" type="number" id="barcode-grams" value="${b.grams}" step="5" oninput="updateBarcodePreview()"></label>
-      ${macroTiles('bc-prev')}
+      ${amountControls('bc')}
       <button class="btn btn-primary btn-block mt3" onclick="confirmBarcode()">Add to log</button>`;
   }
   return `<div class="overlay" onclick="closeBarcodeSheet()">
