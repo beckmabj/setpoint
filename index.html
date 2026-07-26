@@ -365,6 +365,12 @@ function round(n, p) { p = p || 0; const f = Math.pow(10, p); return Math.round(
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+// For values interpolated into an inline on*="fn('...')" handler. esc() is the
+// WRONG tool there: the HTML parser decodes entities before the JS is parsed,
+// so an escaped quote turns back into a real quote and still breaks out of the
+// string. Ids are opaque tokens, so reduce them to a safe alphabet instead.
+function jsId(v) { return String(v == null ? '' : v).replace(/[^A-Za-z0-9_:.-]/g, ''); }
+
 // ---------------------------------------------------------------------
 // Serving units
 //
@@ -444,7 +450,7 @@ function dayTotals(dayLog) {
 
 function estimateFromFormula(profile) {
   const bmr = bmrMifflin(profile);
-  const tdee = bmr * ACTIVITY[profile.activityLevel].mult;
+  const tdee = bmr * ((ACTIVITY[profile.activityLevel] || ACTIVITY.moderate).mult);
   const desiredDailyBalance = (profile.goalRateLbsPerWeek * 3500) / 7;
   const targetCalories = Math.max(tdee + desiredDailyBalance, 1200);
   const proteinG = profile.proteinPerLb * profile.weightLbs;
@@ -456,14 +462,14 @@ function estimateFromFormula(profile) {
 function estimateFromData(logs, profile, windowSize, minDays) {
   windowSize = windowSize || 14; minDays = minDays || 7;
   const dateKeys = Object.keys(logs).sort();
-  const withWeight = dateKeys.filter((k) => logs[k].weightLbs != null).map((k) => ({ date: k, weight: logs[k].weightLbs }));
+  const withWeight = dateKeys.filter((k) => logs[k] && logs[k].weightLbs != null).map((k) => ({ date: k, weight: logs[k].weightLbs }));
   if (withWeight.length < 2) return { ok: false, reason: 'noweight', daysLogged: 0 };
   const trendSeries = computeTrendSeries(withWeight);
   const trendByDate = Object.fromEntries(trendSeries.map((p) => [p.date, p.trend]));
 
   const windowEnd = dateKeys[dateKeys.length - 1];
   const windowStart = addDays(windowEnd, -(windowSize - 1));
-  const windowDays = dateKeys.filter((k) => k >= windowStart && k <= windowEnd && logs[k].weightLbs != null && logs[k].foods && logs[k].foods.length > 0);
+  const windowDays = dateKeys.filter((k) => k >= windowStart && k <= windowEnd && logs[k] && logs[k].weightLbs != null && logs[k].foods && logs[k].foods.length > 0);
   if (windowDays.length < minDays) return { ok: false, reason: 'need', daysLogged: windowDays.length, minDays };
 
   const regressionPoints = windowDays.map((k) => ({ x: daysBetween(windowDays[0], k), y: trendByDate[k] }));
@@ -1050,7 +1056,10 @@ window.requestPasswordReset = requestPasswordReset;
 
 function signOutUser() {
   if (!confirm('Sign out of Tare?')) return;
-  window.FB.signOutUser();
+  Promise.resolve(window.FB.signOutUser()).catch((err) => {
+    console.error('sign out failed:', err);
+    toast('Could not sign out — check your connection.');
+  });
 }
 window.signOutUser = signOutUser;
 
@@ -1349,7 +1358,7 @@ function renderExpenditureCard() {
 
 function renderWeightTrendCard() {
   const dateKeys = Object.keys(S.logs).sort();
-  const withWeight = dateKeys.filter((k) => S.logs[k].weightLbs != null).map((k) => ({ date: k, weight: S.logs[k].weightLbs }));
+  const withWeight = dateKeys.filter((k) => S.logs[k] && S.logs[k].weightLbs != null).map((k) => ({ date: k, weight: S.logs[k].weightLbs }));
   const trendSeries = computeTrendSeries(withWeight);
   const last7 = trendSeries.slice(-7);
   const open = !!S.expanded.weight;
@@ -1438,7 +1447,7 @@ function renderGoalProgressCard() {
     </div>`;
   }
   const dateKeys = Object.keys(S.logs).sort();
-  const withWeight = dateKeys.filter((k) => S.logs[k].weightLbs != null).map((k) => ({ date: k, weight: S.logs[k].weightLbs }));
+  const withWeight = dateKeys.filter((k) => S.logs[k] && S.logs[k].weightLbs != null).map((k) => ({ date: k, weight: S.logs[k].weightLbs }));
   const trendSeries = computeTrendSeries(withWeight);
   const current = trendSeries.length ? trendSeries[trendSeries.length - 1].trend : p.startWeightLbs;
   const totalChange = p.startWeightLbs - p.goalWeightLbs;
@@ -1549,10 +1558,12 @@ function renderMealTimeline(cd, dayLog) {
   if (!foods.length) {
     return `<div class="card empty">Nothing logged ${formatDateLabel(cd).toLowerCase()} yet. Add your first food above.</div>`;
   }
-  // Group by the hour each entry was logged.
+  // Group by the hour each entry was logged. -1 is the "no usable timestamp"
+  // bucket, so imported entries never masquerade as a real mealtime.
   const byHour = new Map();
   foods.forEach((f) => {
-    const h = new Date(entryTime(f)).getHours();
+    const t = entryTime(f);
+    const h = t > 0 ? new Date(t).getHours() : -1;
     if (!byHour.has(h)) byHour.set(h, []);
     byHour.get(h).push(f);
   });
@@ -1565,22 +1576,23 @@ function renderMealTimeline(cd, dayLog) {
     }), { calories: 0, protein: 0, fat: 0, carbs: 0 });
 
     const rows = items.map((f) => {
-      const t = new Date(entryTime(f));
-      const mm = String(t.getMinutes()).padStart(2, '0');
-      const hh = String(t.getHours()).padStart(2, '0');
+      const ts = entryTime(f);
+      const t = new Date(ts);
+      const mm = ts > 0 ? String(t.getMinutes()).padStart(2, '0') : '--';
+      const hh = ts > 0 ? String(t.getHours()).padStart(2, '0') : '--';
       return `<div class="meal-item">
         <div class="flex1">
           <div class="t14 w500">${esc(f.name)}</div>
           <div class="t11 faint mono">${hh}:${mm} · ${esc(f.label || '')} · ${round(f.calories)} kcal · P${round(f.protein)} F${round(f.fat)} C${round(f.carbs)}</div>
         </div>
-        <button class="icon-btn" onclick="removeFood('${cd}','${f.id}')">${iconTrash}</button>
+        <button class="icon-btn" onclick="removeFood('${cd}','${jsId(f.id)}')">${iconTrash}</button>
       </div>`;
     }).join('');
 
     return `<div class="meal-group">
       <div class="row between mb2">
         <div class="row g2">
-          <span class="meal-hour mono">${hourLabel(h)}</span>
+          <span class="meal-hour mono">${h < 0 ? 'Untimed' : hourLabel(h)}</span>
           <button class="meal-add" onclick="openPicker('${cd}', ${slotTimestamp(cd, h)})" title="Add to this hour">${iconPlus}</button>
         </div>
         <span class="t11 mono faint">${round(tot.calories)} kcal · P${round(tot.protein)} F${round(tot.fat)} C${round(tot.carbs)}</span>
@@ -1676,9 +1688,13 @@ function entryToFood(e) {
   };
 }
 
+// Must be STABLE. Returning Date.now() as the fallback made an entry with no
+// recoverable timestamp drift between hour groups as the day passed, reorder
+// Recents on every open, and export the wrong meal time. 0 sorts it first and
+// never changes; renderMealTimeline buckets it under an "Untimed" heading.
 function entryTime(e) {
   const t = Number(e.at) || Number(String(e.id).split('-')[0]);
-  return isFinite(t) ? t : Date.now();
+  return isFinite(t) && t > 0 ? t : 0;
 }
 
 // Most recently logged foods across all days, de-duplicated, newest first.
@@ -1687,7 +1703,7 @@ function recentFoods(limit) {
   const out = [];
   const entries = [];
   Object.keys(S.logs).forEach((dk) => {
-    (S.logs[dk].foods || []).forEach((e) => entries.push(e));
+    ((S.logs[dk] || {}).foods || []).forEach((e) => entries.push(e));
   });
   entries.sort((a, b) => entryTime(b) - entryTime(a));
   for (const e of entries) {
@@ -1921,6 +1937,7 @@ function amountControls(ctx) {
   const st = ctxState(ctx), food = ctxFood(ctx);
   const units = unitsFor(food);
   const unit = units.includes(st.unit) ? st.unit : 'g';
+  st.unit = unit; // commit, so confirm*() can't log a different unit than shown
   const grams = round(unitToGrams(st.amount, unit, food.servingGrams));
   return `
     <label class="field mb2"><span>Amount</span>
@@ -1934,9 +1951,12 @@ function amountControls(ctx) {
 }
 
 function onAmountChange(ctx) {
-  const st = ctxState(ctx), food = ctxFood(ctx);
+  // Element check first: these run from setTimeout(0) and the sheet may have
+  // closed in between, in which case ctxFood() would throw.
   const el = document.getElementById(`${ctx}-amount`);
   if (!el) return;
+  const st = ctxState(ctx), food = ctxFood(ctx);
+  if (!st || !food) return;
   st.amount = Number(el.value) || 0;
   const gEl = document.getElementById(`${ctx}-grams`);
   if (gEl) gEl.textContent = `${round(unitToGrams(st.amount, st.unit, food.servingGrams))}g total`;
@@ -1960,6 +1980,8 @@ function macroTiles(idPrefix) {
   </div>`;
 }
 function fillMacroTiles(idPrefix, m) {
+  // Callers reach here via setTimeout(0); the sheet may already be gone.
+  if (!document.getElementById(`${idPrefix}-cal`)) return;
   document.getElementById(`${idPrefix}-cal`).textContent = m.calories;
   document.getElementById(`${idPrefix}-p`).textContent = m.protein + 'g';
   document.getElementById(`${idPrefix}-c`).textContent = m.carbs + 'g';
@@ -1970,12 +1992,17 @@ async function doPickerSearch(e) {
   const q = document.getElementById('picker-query').value.trim();
   if (!q) return;
   S.picker.query = q; S.picker.status = 'loading'; S.picker.selectedOff = null;
+  // Generation token: a slow first search must not overwrite a faster second.
+  const seq = (S.picker.seq || 0) + 1;
+  S.picker.seq = seq;
   render();
   try {
     const r = await searchFoods(q);
+    if (!S.picker || S.picker.seq !== seq) return; // sheet closed, or superseded
     S.picker.results = r; S.picker.status = r.length ? 'idle' : 'empty';
   } catch (err) {
     console.error('food search failed:', err);
+    if (!S.picker || S.picker.seq !== seq) return;
     S.picker.status = String(err.message) === 'rate-limited' ? 'ratelimit' : 'error';
   }
   render();
@@ -2015,7 +2042,7 @@ function renderPickerLibrary() {
   const rows = lib.length === 0
     ? `<div class="faint t13" style="padding:10px 0;">Nothing saved yet. Foods you create under "Custom" are saved here. Foods from Search and Barcode show up under "Recent".</div>`
     : lib.map((f, i) => `
-      <button class="food-row" data-name="${esc(f.name.toLowerCase())}" onclick="selectSavedFood(${i})">
+      <button class="food-row" data-name="${esc(String(f.name || '').toLowerCase())}" onclick="selectSavedFood(${i})">
         <div><div class="t14 w500">${esc(f.name)}</div><div class="t12 faint mono">${f.calories} kcal per ${esc(f.servingLabel)}</div></div>
       </button>`).join('');
   return `
@@ -2216,6 +2243,12 @@ function closeScanner() {
   const s = scanner;
   scanner = null; // clear first so in-flight callbacks bail out
   try { if (s.controls) s.controls.stop(); } catch (err) { /* already stopped */ }
+  // Belt and braces: if startup failed after the stream was acquired, controls
+  // was never assigned and nothing above would release the camera.
+  try {
+    const v = s.el && s.el.querySelector('video');
+    if (v && v.srcObject) { v.srcObject.getTracks().forEach((t) => t.stop()); v.srcObject = null; }
+  } catch (err) { /* nothing to release */ }
   if (s.el && s.el.parentNode) s.el.parentNode.removeChild(s.el);
 }
 window.closeScanner = closeScanner;
@@ -2230,11 +2263,12 @@ async function lookupBarcode(e, codeOverride) {
   if (e) e.preventDefault();
   const input = document.getElementById('barcode-input');
   const code = String(codeOverride != null ? codeOverride : (input ? input.value : '')).trim();
-  if (!code) return;
+  if (!code || !S.barcode) return;
   S.barcode.code = code; S.barcode.status = 'loading'; S.barcode.product = null; render();
   try {
     const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(code)}.json`);
     const data = await res.json();
+    if (!S.barcode) return; // dismissed while in flight
     if (data.status === 1 && data.product && data.product.nutriments && data.product.nutriments['energy-kcal_100g'] != null) {
       const p = data.product;
       // serving_quantity is grams when serving_quantity_unit says so; OFF is
@@ -2252,7 +2286,11 @@ async function lookupBarcode(e, codeOverride) {
       if (servingGrams) { S.barcode.amount = 1; S.barcode.unit = 'serving'; }
       else { S.barcode.amount = 100; S.barcode.unit = 'g'; }
     } else { S.barcode.status = 'notfound'; }
-  } catch (err) { S.barcode.status = 'error'; }
+  } catch (err) {
+    console.error('barcode lookup failed:', err);
+    if (S.barcode) S.barcode.status = 'error';
+  }
+  if (!S.barcode) return; // sheet dismissed while the lookup was in flight
   render();
   if (S.barcode.status === 'found') setTimeout(() => onAmountChange('bc'), 0);
 }
@@ -2347,7 +2385,7 @@ function renderStrategy() {
 
   ${t.history && t.history.length ? `<div class="card">
     <div class="w600 t14 mb2">Target history</div>
-    ${t.history.slice().reverse().slice(0, 12).map((h) => `<div class="row between t12 mono faint" style="padding:3px 0;"><span>${h.date}</span><span>${h.calories} kcal (${h.source})</span></div>`).join('')}
+    ${t.history.slice().reverse().slice(0, 12).map((h) => `<div class="row between t12 mono faint" style="padding:3px 0;"><span>${esc(h.date || '')}</span><span>${round(num(h.calories, 0))} kcal (${esc(h.source || 'manual')})</span></div>`).join('')}
   </div>` : ''}
   `;
 }
@@ -2464,7 +2502,10 @@ window.exportData = exportData;
 // Column layout deliberately mirrors MacroFactor's export so the two are
 // directly comparable and the round trip is symmetric.
 function csvCell(v) {
-  const s = v == null ? '' : String(v);
+  let s = v == null ? '' : String(v);
+  // Neutralise spreadsheet formula injection: a food named =HYPERLINK(...)
+  // would otherwise execute when the export is opened in Excel.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 function csvDownload(filename, rows) {
@@ -2482,7 +2523,7 @@ function exportFoodLogCsv() {
   const rows = [['Date', 'Time', 'Food Name', 'Brand', 'Unit', 'Amount', 'Grams',
     'Calories (kcal)', 'Fat (g)', 'Carbs (g)', 'Protein (g)']];
   Object.keys(S.logs).sort().forEach((dk) => {
-    (S.logs[dk].foods || []).slice().sort((a, b) => entryTime(a) - entryTime(b)).forEach((f) => {
+    ((S.logs[dk] || {}).foods || []).slice().sort((a, b) => entryTime(a) - entryTime(b)).forEach((f) => {
       const t = new Date(entryTime(f));
       const hh = String(t.getHours()).padStart(2, '0');
       const mm = String(t.getMinutes()).padStart(2, '0');
@@ -2502,7 +2543,7 @@ function exportDailyCsv() {
     'Fat (g)', 'Carbs (g)', 'Target Calories (kcal)', 'Target Protein (g)', 'Target Fat (g)',
     'Target Carbs (g)', 'Entries']];
   const keys = Object.keys(S.logs).sort();
-  const withWeight = keys.filter((k) => S.logs[k].weightLbs != null)
+  const withWeight = keys.filter((k) => S.logs[k] && S.logs[k].weightLbs != null)
     .map((k) => ({ date: k, weight: S.logs[k].weightLbs }));
   const trendBy = Object.fromEntries(computeTrendSeries(withWeight).map((p) => [p.date, p.trend]));
   keys.forEach((dk) => {
@@ -2516,6 +2557,124 @@ function exportDailyCsv() {
   csvDownload(`tare-daily-${todayKey()}.csv`, rows);
 }
 window.exportDailyCsv = exportDailyCsv;
+// ---------------------------------------------------------------------
+// Import sanitising
+//
+// An imported file is untrusted input. Everything it contains eventually
+// reaches innerHTML or the maths, so coerce it at the boundary rather than
+// escaping at a dozen render sites. Entry ids in particular are interpolated
+// into inline onclick handlers, so they are reduced to a safe character set.
+// ---------------------------------------------------------------------
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+function safeId(v, fallback) {
+  const s = String(v == null ? '' : v).replace(/[^A-Za-z0-9_:.-]/g, '');
+  return s || fallback;
+}
+function num(v, fallback) {
+  const n = Number(v);
+  return isFinite(n) ? n : fallback;
+}
+function cleanEntry(raw, dateKey, i) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = safeId(raw.id, `imp-${dateKey}-${i}`);
+  const at = num(raw.at, NaN);
+  const e = {
+    id,
+    at: isFinite(at) ? at : slotTimestamp(dateKey, 12),
+    name: String(raw.name == null ? 'Unnamed food' : raw.name).slice(0, 200),
+    brand: String(raw.brand || '').slice(0, 120),
+    foodId: safeId(raw.foodId, ''),
+    label: String(raw.label || '').slice(0, 120),
+    calories: num(raw.calories, 0), protein: num(raw.protein, 0),
+    carbs: num(raw.carbs, 0), fat: num(raw.fat, 0),
+  };
+  if (raw.unit) { e.unit = String(raw.unit).slice(0, 12); e.amount = num(raw.amount, 0); }
+  if (raw.servingGrams != null) e.servingGrams = num(raw.servingGrams, null);
+  if (raw.per100 && typeof raw.per100 === 'object') {
+    e.per100 = {
+      calories: num(raw.per100.calories, 0), protein: num(raw.per100.protein, 0),
+      carbs: num(raw.per100.carbs, 0), fat: num(raw.per100.fat, 0),
+    };
+  }
+  return e;
+}
+function cleanLogs(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  Object.keys(raw).forEach((dk) => {
+    if (!DATE_KEY_RE.test(dk)) return;           // 'foo' would poison addDays()
+    const day = raw[dk];
+    if (!day || typeof day !== 'object') return; // a null day crashes the dashboard
+    const w = day.weightLbs == null ? null : num(day.weightLbs, null);
+    const foods = Array.isArray(day.foods)
+      ? day.foods.map((f, i) => cleanEntry(f, dk, i)).filter(Boolean) : [];
+    out[dk] = { weightLbs: w, foods };
+  });
+  return out;
+}
+function cleanSavedFoods(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((f) => f && typeof f === 'object').map((f, i) => {
+    const o = Object.assign({}, f);
+    o.id = safeId(f.id, `imported-${i}`);
+    o.name = String(f.name == null ? 'Unnamed food' : f.name).slice(0, 200);
+    o.servingLabel = String(f.servingLabel || '1 serving').slice(0, 80);
+    ['calories', 'protein', 'carbs', 'fat', 'caloriesPer100', 'proteinPer100',
+      'carbsPer100', 'fatPer100', 'servingGrams'].forEach((k) => {
+      if (o[k] != null) o[k] = num(o[k], 0);
+    });
+    return o;
+  });
+}
+// profile/targets carry meaningful STRING fields (sex, activityLevel,
+// startDate, target-history source) alongside the numerics. A blanket
+// numbers-only filter would silently delete them and break the restored
+// account, so each is validated on its own terms.
+function cleanProfile(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const w = num(raw.weightLbs, NaN);
+  if (!isFinite(w) || w <= 0) return null;
+  return {
+    sex: raw.sex === 'female' ? 'female' : 'male',
+    age: clamp(num(raw.age, 30), 1, 120),
+    heightIn: clamp(num(raw.heightIn, 68), 1, 108),
+    weightLbs: clamp(w, 1, 1500),
+    startWeightLbs: clamp(num(raw.startWeightLbs, w), 1, 1500),
+    goalWeightLbs: raw.goalWeightLbs == null ? null : clamp(num(raw.goalWeightLbs, 0), 1, 1500),
+    // An unknown key would throw at ACTIVITY[...].mult
+    activityLevel: Object.prototype.hasOwnProperty.call(ACTIVITY, raw.activityLevel)
+      ? raw.activityLevel : 'moderate',
+    goalRateLbsPerWeek: clamp(num(raw.goalRateLbsPerWeek, 0), -5, 5),
+    proteinPerLb: clamp(num(raw.proteinPerLb, 1), 0, 3),
+    fatPercent: clamp(num(raw.fatPercent, 0.28), 0, 1),
+    startDate: DATE_KEY_RE.test(String(raw.startDate)) ? raw.startDate : todayKey(),
+  };
+}
+function cleanTargetSnapshot(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = {
+    calories: num(raw.calories, 0), protein: num(raw.protein, 0),
+    fat: num(raw.fat, 0), carbs: num(raw.carbs, 0),
+    estimatedTDEE: num(raw.estimatedTDEE, 0),
+  };
+  if (raw.daysUsed != null) o.daysUsed = num(raw.daysUsed, 0);
+  if (raw.weeklyRateActual != null) o.weeklyRateActual = num(raw.weeklyRateActual, 0);
+  if (DATE_KEY_RE.test(String(raw.date))) o.date = raw.date;
+  if (raw.source != null) o.source = String(raw.source).replace(/[^A-Za-z0-9 _.:+-]/g, '').slice(0, 40);
+  return o;
+}
+function cleanTargets(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = cleanTargetSnapshot(raw);
+  if (!t || !isFinite(t.calories) || t.calories <= 0) return null;
+  t.date = t.date || todayKey();
+  const hist = Array.isArray(raw.history)
+    ? raw.history.map(cleanTargetSnapshot).filter(Boolean) : [];
+  t.history = hist.length ? hist : [Object.assign({}, t, { history: undefined })];
+  delete t.history[0].history;
+  return t;
+}
+
 function importData(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -2530,13 +2689,13 @@ function importData(e) {
       // account it's being imported into.
       if (data.merge || (!data.profile && !data.targets)) {
         if (!data.logs && !data.savedFoods) throw new Error('Nothing to merge');
-        const incoming = data.logs || {};
+        const incoming = cleanLogs(data.logs);
         const merged = Object.assign({}, S.logs);
         let addedDays = 0, addedFoods = 0;
         Object.keys(incoming).forEach((dk) => {
           const existing = merged[dk] || { weightLbs: null, foods: [] };
           const have = new Set((existing.foods || []).map((f) => f.id));
-          const incomingFoods = (incoming[dk].foods || []).filter((f) => !have.has(f.id));
+          const incomingFoods = incoming[dk].foods.filter((f) => !have.has(f.id));
           if (!merged[dk]) addedDays++;
           addedFoods += incomingFoods.length;
           merged[dk] = {
@@ -2546,16 +2705,32 @@ function importData(e) {
         });
         S.logs = merged;
         const haveSaved = new Set(S.savedFoods.map((f) => f.id));
-        const newSaved = (data.savedFoods || []).filter((f) => !haveSaved.has(f.id));
+        const newSaved = cleanSavedFoods(data.savedFoods).filter((f) => !haveSaved.has(f.id));
         S.savedFoods = S.savedFoods.concat(newSaved);
         persistLogs(); persistSavedFoods();
         render();
-        toast(`Merged ${addedFoods} entries across ${Object.keys(incoming).length} days`);
+        toast(`Merged ${addedFoods} entries across ${addedDays || Object.keys(incoming).length} days`);
         return;
       }
 
-      if (!data.profile || !data.targets) throw new Error('Missing profile/targets in file');
-      S.profile = data.profile; S.targets = data.targets; S.logs = data.logs || {}; S.savedFoods = data.savedFoods || [];
+      // Full restore. Strictly more destructive than "Erase all data" — it
+      // wipes this account's history on every device — so it asks first, and
+      // validates rather than trusting the file's shape.
+      const profile = cleanProfile(data.profile);
+      const targets = cleanTargets(data.targets);
+      if (!profile || !targets) throw new Error('Missing or malformed profile/targets');
+      const logs = cleanLogs(data.logs);
+      const dayCount = Object.keys(logs).length;
+      const mine = Object.keys(S.logs).length;
+      if (!confirm(`Replace everything in this account with this backup?\n\n`
+        + `Backup: ${dayCount} day${dayCount === 1 ? '' : 's'} of logs\n`
+        + `Current: ${mine} day${mine === 1 ? '' : 's'} — these will be erased on all your devices.\n\n`
+        + `This cannot be undone.`)) {
+        toast('Import cancelled');
+        return;
+      }
+      S.profile = profile; S.targets = targets;
+      S.logs = logs; S.savedFoods = cleanSavedFoods(data.savedFoods);
       persistProfile(); persistTargets(); persistLogs(); persistSavedFoods();
       render(); toast('Backup restored');
     } catch (err) { toast('Could not read that file — is it a Tare backup?'); }
