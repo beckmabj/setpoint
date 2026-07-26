@@ -1326,7 +1326,8 @@ function renderWeightTrendCard() {
   const open = !!S.expanded.weight;
   if (trendSeries.length === 0) {
     return `<div class="card"><div class="row between"><span class="t13 faint">Weight Trend</span><span class="fainter t10">Last 7 days</span></div>
-      <div class="faint t12" style="padding:8px 0;">No weigh-ins yet.</div></div>`;
+      <div class="faint t12" style="padding:8px 0;">No weigh-ins yet.</div>
+      ${weightEntryRow()}</div>`;
   }
   const current = trendSeries[trendSeries.length - 1].trend;
   let weeklyRate = 0;
@@ -1341,6 +1342,18 @@ function renderWeightTrendCard() {
     ${open ? renderWeightExpanded(trendSeries, weeklyRate) : ''}
   </div>`;
 }
+// Weigh-in entry lives with the weight data on the Dashboard, not in the food
+// log. stopPropagation keeps taps inside it from collapsing the card.
+function weightEntryRow() {
+  const today = todayKey();
+  const existing = getDayLog(today).weightLbs;
+  return `<div class="row g2 mt3" onclick="event.stopPropagation()">
+    <input class="input flex1" type="number" inputmode="decimal" step="any" id="weight-input"
+           placeholder="Today's weight (lb)" value="${existing ?? ''}">
+    <button class="btn btn-dark" onclick="saveWeightFromInput('${today}')">Save</button>
+  </div>`;
+}
+
 function renderWeightExpanded(trendSeries, weeklyRate) {
   const chartSlice = trendSeries.slice(-30);
   return `<div class="mt3">
@@ -1350,6 +1363,7 @@ function renderWeightExpanded(trendSeries, weeklyRate) {
     </div>
     ${svgTrendChart(chartSlice.map((p) => p.weight), chartSlice.map((p) => p.trend), { w: 300, h: 130 })}
     <div class="fainter t11 mt1">Dots are raw weigh-ins. The line is your smoothed trend.</div>
+    ${weightEntryRow()}
   </div>`;
 }
 
@@ -1466,14 +1480,6 @@ function renderLog() {
   <div class="card">
     <div class="day-strip">${strip}</div>
     ${macroLine}
-  </div>
-
-  <div class="card">
-    <div class="row between mb2"><span class="t13 w600">Weight</span>${iconScale}</div>
-    <div class="row g2">
-      <input class="input flex1" type="number" id="weight-input" placeholder="lb" value="${dayLog.weightLbs ?? ''}">
-      <button class="btn btn-dark" onclick="saveWeightFromInput('${cd}')">Save</button>
-    </div>
   </div>
 
   <div class="row between mb2 mt2">
@@ -2000,9 +2006,15 @@ function closeShortcuts() { S.shortcuts = null; render(); }
 window.closeShortcuts = closeShortcuts;
 
 function shortcutWeight() {
-  const d = S.shortcuts.forDate;
-  closeShortcuts(); S.activeTab = 'log'; S.currentDate = d; render();
-  setTimeout(() => { const el = document.getElementById('weight-input'); if (el) el.focus(); }, 30);
+  // Weigh-in now lives in the Dashboard's weight card, so open and expand it.
+  closeShortcuts();
+  S.activeTab = 'dashboard';
+  S.expanded = Object.assign({}, S.expanded, { weight: true });
+  render();
+  setTimeout(() => {
+    const el = document.getElementById('weight-input');
+    if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  }, 30);
 }
 window.shortcutWeight = shortcutWeight;
 function shortcutSearch() { const d = S.shortcuts.forDate; closeShortcuts(); openPicker(d); }
