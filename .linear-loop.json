@@ -1,0 +1,16 @@
+{
+  "linearTeamKey": "CLA",
+  "githubRepository": "beckmabj/setpoint",
+  "conflictsWith": [
+    {
+      "loop": "Codex Linear Loop",
+      "linearTeamKey": "BRA",
+      "githubRepository": "beckmabj/linear-loop"
+    },
+    {
+      "loop": "Codex Linear Loop (Setflow)",
+      "linearTeamKey": "BRA",
+      "githubRepository": "beckmabj/Setflow"
+    }
+  ]
+}
