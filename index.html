@@ -192,6 +192,13 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
 .row-emoji { font-size: 22px; line-height: 1; flex: none; margin-right: 11px; }
 
+/* The primary action stays pinned to the bottom of the sheet. Once the food
+   detail panel was added the sheet grew tall enough that, with the keyboard
+   up, "Add to log" sat below the fold — so logging took two moves: dismiss
+   the keyboard, then find the button. Sticky keeps it one. */
+.sheet-actions { position: sticky; bottom: 0; margin: 16px -16px 0; padding: 12px 16px calc(4px + env(safe-area-inset-bottom));
+  background: linear-gradient(to bottom, transparent, var(--paper) 22%); }
+
 /* Dashboard. The reference's whole character is scale — big headings, a large
    gauge, generous air — so the type here runs well above the app's usual sizes. */
 .dash-date { font-size: 13px; font-weight: 600; letter-spacing: .09em; color: var(--ink-faint); margin-bottom: 2px; }
@@ -2398,7 +2405,7 @@ function renderPickerSearch() {
       <button class="icon-btn" onclick="toggleFavorite()" title="Favorite">${isFavorite(f) ? iconHeartFull : iconHeart}</button>
     </div>
     ${amountControls('off')}
-    <button class="btn btn-primary btn-block mt3" onclick="confirmOff()">Add to log</button>`;
+    <div class="sheet-actions"><button class="btn btn-primary btn-block" onclick="confirmOff()">Add to log</button></div>`;
   }
   return `
   <form onsubmit="doPickerSearch(event)" class="row g2 mb3">
@@ -2490,8 +2497,10 @@ function renderPickerRecent() {
       <button class="icon-btn" onclick="toggleFavorite()" title="Favorite">${isFavorite(f) ? iconHeartFull : iconHeart}</button>
     </div>
     ${amountControls('recent')}
-    <button class="btn btn-primary btn-block mt3" onclick="confirmRecent()">${p.editing ? 'Save changes' : 'Add to log'}</button>
-    ${p.editing ? `<button class="btn btn-outline btn-block mt2" onclick="deleteEditingEntry()">Delete this entry</button>` : ''}`;
+    <div class="sheet-actions">
+      <button class="btn btn-primary btn-block" onclick="confirmRecent()">${p.editing ? 'Save changes' : 'Add to log'}</button>
+      ${p.editing ? `<button class="btn btn-outline btn-block mt2" onclick="deleteEditingEntry()">Delete this entry</button>` : ''}
+    </div>`;
   }
 
   const favs = favoriteFoods();
@@ -2869,7 +2878,7 @@ function renderPickerLibrary() {
     <div class="t15 w600 mb2">${esc(f.name)}</div>
     <label class="field mb3"><span>Servings (1 = ${esc(f.servingLabel)})</span><input class="input" type="number" id="saved-mult" value="${m}" step="0.25" min="0.25" oninput="updateSavedPreview()"></label>
     ${macroTiles('saved-prev')}
-    <button class="btn btn-primary btn-block mt3" onclick="confirmSaved()">Add to log</button>`;
+    <div class="sheet-actions"><button class="btn btn-primary btn-block" onclick="confirmSaved()">Add to log</button></div>`;
   }
   const lib = libraryFoods();
   const rows = lib.length === 0
@@ -2929,7 +2938,7 @@ function renderPickerCustom() {
     <label class="field"><span>Carbs (g)</span><input class="input" type="number" id="custom-c"></label>
     <label class="field"><span>Fat (g)</span><input class="input" type="number" id="custom-f"></label>
   </div>
-  <button class="btn btn-primary btn-block" onclick="confirmCustom()">Add to log</button>`;
+  <div class="sheet-actions"><button class="btn btn-primary btn-block" onclick="confirmCustom()">Add to log</button></div>`;
 }
 function confirmCustom() {
   const val = (id) => document.getElementById(id).value;
@@ -3115,7 +3124,7 @@ function renderBarcodeSheet() {
     body += `
       <div class="t15 w600 mb2">${esc(b.product.name)}${b.product.brand ? ` <span class="faint t12">· ${esc(b.product.brand)}</span>` : ''}</div>
       ${amountControls('bc')}
-      <button class="btn btn-primary btn-block mt3" onclick="confirmBarcode()">Add to log</button>`;
+      <div class="sheet-actions"><button class="btn btn-primary btn-block" onclick="confirmBarcode()">Add to log</button></div>`;
   }
   return `<div class="overlay" onclick="closeBarcodeSheet()">
     <div class="sheet" onclick="event.stopPropagation()">
