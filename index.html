@@ -176,9 +176,6 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .nstrip-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 4px; transition: height 200ms ease; }
 .nstrip-daylabel { text-align: center; font-size: 11px; color: var(--ink-fainter); padding-top: 2px; }
 .nstrip-day.is-today .nstrip-daylabel { color: var(--ink); font-weight: 700; }
-.nstrip-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.nstrip-summary .v { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
-.nstrip-summary .l { font-size: 10.5px; color: var(--ink-fainter); margin-top: 1px; }
 
 /* streak grid */
 .streak-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
@@ -202,6 +199,15 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .scan-btn { border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.35); color: #fff; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
 .row-emoji { font-size: 19px; line-height: 1; flex: none; margin-right: 10px; }
+
+/* Dashboard stat tiles. Each sizes to its own content — no equal-height
+   constraint, so dead space can't reappear when a metric is added. */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 13px; padding: 11px 12px 12px; }
+.tile-v { font-size: 23px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.tile-suf { font-size: 13px; font-weight: 600; }
+.trk { height: 4px; border-radius: 3px; background: var(--tan-soft); overflow: hidden; }
+.fil { height: 100%; border-radius: 3px; transition: width 220ms ease; }
 
 /* Food detail */
 .fd { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
@@ -299,21 +305,6 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 /* shortcuts sheet */
 
 /* dashboard carousel */
-.dash-carousel-wrap { margin-bottom: 14px; }
-/* One fixed height for the whole carousel, sized to the tallest panel, with
-   every card stretched to fill it. Sizing to the ACTIVE page removed the dead
-   gap but made the carousel jump on every swipe; stretching the cards removes
-   the gap without any resize. */
-.dash-carousel { display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-.dash-carousel::-webkit-scrollbar { display: none; }
-.dash-page { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; display: flex; }
-.dash-page > .card { flex: 1; margin-bottom: 0; display: flex; flex-direction: column; }
-.dash-page > .card > .nstrip { flex: 1; min-height: 120px; }
-.dash-page .card { margin-bottom: 0; }
-.dash-dots { display: flex; justify-content: center; gap: 10px; margin-top: 10px; padding: 6px 0; }
-.dash-dot { width: 6px; height: 6px; border-radius: 3px; background: var(--line-strong); border: none; padding: 0; cursor: pointer; transition: all 180ms ease; position: relative; }
-.dash-dot::after { content: ''; position: absolute; inset: -19px -9px; }
-.dash-dot.active { background: var(--ink-faint); width: 16px; }
 
 /* big ring (Daily Nutrition page) */
 .big-ring-wrap { position: relative; width: 164px; height: 164px; flex-shrink: 0; }
@@ -785,8 +776,10 @@ const S = {
   savedFoods: [],
   activeTab: 'dashboard',
   currentDate: todayKey(),
-  dashMode: 'remaining',
-  dashPage: 0,
+  // Consumed by default: on a fully logged day "remaining" approaches zero,
+  // so a well-tracked week rendered as an almost-empty chart. Persisted, so
+  // the toggle stays where it was left rather than resetting each session.
+  dashMode: readKey('dashMode') === 'remaining' ? 'remaining' : 'consumed',
   weighInDate: null,
   energyMode: 'targets',
   expanded: {},
@@ -993,7 +986,6 @@ function render() {
     const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
     window.scrollTo({ top: Math.min(prevScroll, max), behavior: 'instant' });
   }
-  if (S.activeTab === 'dashboard') setTimeout(setupDashCarousel, 0);
 }
 function renderTopBar() {
   return `<div class="row between mb4">
@@ -1616,50 +1608,56 @@ function renderDashboard() {
     </button>`;
   }).join('');
 
-  const todayTotals = dayTotals(getDayLog(today));
+  // Tiles rather than a swipe carousel. Equal-height carousel pages forced
+  // the shorter panels to pad themselves out; a tile sized to its own content
+  // cannot leave dead space, and adding a metric later can't reintroduce it.
   const rem = S.dashMode === 'remaining';
-  const summary = [
-    { key: 'calories', label: 'Cal', suf: '', color: 'var(--calories)' },
-    { key: 'protein', label: 'Protein', suf: 'g', color: 'var(--brick)' },
-    { key: 'fat', label: 'Fat', suf: 'g', color: 'var(--amber)' },
-    { key: 'carbs', label: 'Carbs', suf: 'g', color: 'var(--carbs)' },
-  ].map((m) => {
-    const val = rem ? round(t[m.key] - todayTotals[m.key]) : round(todayTotals[m.key]);
-    return `<div>
-      <div class="v mono" style="color:${m.color};">${val}${m.suf}</div>
-      <div class="l">of ${t[m.key]}${m.suf} ${m.label}</div>
+  const todayTotals = dayTotals(getDayLog(today));
+  const macroTile = (key, label, color, suffix) => {
+    const val = round(todayTotals[key]);
+    const tgt = round(t[key] || 0);
+    const shown = rem ? round(tgt - val) : val;
+    const pct = tgt > 0 ? clamp(val / tgt, 0, 1) * 100 : 0;
+    const over = val > tgt;
+    const note = over ? `${round(val - tgt)}${suffix} over` : `${round(tgt - val)}${suffix} left`;
+    return `<div class="tile">
+      <div class="t11 faint">${label}</div>
+      <div class="tile-v mono" style="color:${color};">${shown}<span class="tile-suf">${suffix}</span></div>
+      <div class="t10 fainter">of ${tgt}${suffix} · ${note}</div>
+      <div class="trk mt2"><div class="fil" style="width:${round(pct, 1)}%; background:${color};"></div></div>
     </div>`;
-  }).join('');
-
-  const weeklyPage = `
-    <div class="row between mb3">
-      <span class="w600 t14">Weekly nutrition</span>
-      <div class="pill-toggle" style="width:auto;">
-        <button class="${!rem ? 'active' : ''}" style="padding:6px 12px;" onclick="setDashMode('consumed')">Consumed</button>
-        <button class="${rem ? 'active' : ''}" style="padding:6px 12px;" onclick="setDashMode('remaining')">Remaining</button>
-      </div>
-    </div>
-    <div class="nstrip-summary mb3">${summary}</div>
-    <div class="nstrip flex1">${stripDays}</div>`;
+  };
 
   return `
-  <div class="dash-carousel-wrap">
-    <div class="dash-carousel" id="dash-carousel">
-      <div class="dash-page" data-page="0"><div class="card">${weeklyPage}</div></div>
-      <div class="dash-page" data-page="1"><div class="card">${renderDailyNutritionPage()}</div></div>
-      <div class="dash-page" data-page="2"><div class="card">${renderEnergyBalanceBigPage()}</div></div>
+  <div class="row between mb2">
+    <span class="w600 t14">Today</span>
+    <div class="pill-toggle" style="width:auto;">
+      <button class="${!rem ? 'active' : ''}" style="padding:6px 12px;" onclick="setDashMode('consumed')">Consumed</button>
+      <button class="${rem ? 'active' : ''}" style="padding:6px 12px;" onclick="setDashMode('remaining')">Remaining</button>
     </div>
-    <div class="dash-dots">
-      <button class="dash-dot ${S.dashPage === 0 ? 'active' : ''}" onclick="scrollToDashPage(0)"></button>
-      <button class="dash-dot ${S.dashPage === 1 ? 'active' : ''}" onclick="scrollToDashPage(1)"></button>
-      <button class="dash-dot ${S.dashPage === 2 ? 'active' : ''}" onclick="scrollToDashPage(2)"></button>
+  </div>
+  <div class="tiles mb3">
+    ${macroTile('calories', 'Calories', 'var(--calories)', '')}
+    ${macroTile('protein', 'Protein', 'var(--brick)', 'g')}
+    ${macroTile('fat', 'Fat', 'var(--amber)', 'g')}
+    ${macroTile('carbs', 'Carbs', 'var(--carbs)', 'g')}
+  </div>
+
+  <div class="grid2 mb3">
+    ${renderExpenditureCard()}
+    ${renderWeightTrendCard()}
+  </div>
+
+  <div class="card">
+    <div class="row between mb3">
+      <span class="w600 t14">This week</span>
+      <span class="t10 fainter mono">${weekDays.filter((d) => (getDayLog(d).foods || []).length).length} of 7 logged</span>
     </div>
+    <div class="nstrip">${stripDays}</div>
   </div>
 
   <div class="w600 t14 mb2">Insights &amp; analytics</div>
   <div class="grid2 mb2">
-    ${renderExpenditureCard()}
-    ${renderWeightTrendCard()}
     ${renderEnergyBalanceCard()}
     ${renderGoalProgressCard()}
   </div>
@@ -1671,85 +1669,17 @@ function renderDashboard() {
   </div>
   `;
 }
-function setDashMode(m) { S.dashMode = m; render(); }
+function setDashMode(m) {
+  S.dashMode = m === 'remaining' ? 'remaining' : 'consumed';
+  writeKey('dashMode', S.dashMode);
+  render();
+}
 window.setDashMode = setDashMode;
 
-function renderDailyNutritionPage() {
-  const t = S.targets;
-  const totals = dayTotals(getDayLog(todayKey()));
-  const target = t.calories;
-  const remaining = round(target - totals.calories);
-  const mode = S.dashMode;
-  const centerVal = mode === 'consumed' ? round(totals.calories) : remaining;
-  const centerLabel = mode === 'consumed' ? 'Consumed' : 'Remaining';
-  const leftVal = mode === 'consumed' ? remaining : round(totals.calories);
-  const leftLabel = mode === 'consumed' ? 'Remaining' : 'Consumed';
-  const pct = target > 0 ? clamp(centerVal / target, 0, 1) : 0;
-
-  const macroRows = [
-    ['Protein', totals.protein, t.protein, 'var(--brick)'],
-    ['Fat', totals.fat, t.fat, 'var(--amber)'],
-    ['Carbs', totals.carbs, t.carbs, 'var(--carbs)'],
-  ].map(([label, val, tgt, color]) => {
-    const shown = mode === 'consumed' ? round(val) : round(tgt - val);
-    const fillFrac = tgt > 0 ? clamp(shown / tgt, 0, 1) : 0;
-    return `<div class="mb3">
-      <div class="t11 faint mb1">${label}</div>
-      <div class="bar-track" style="background:var(--tan-soft);"><div class="bar-fill" style="width:${round(fillFrac * 100)}%; background:${color};"></div></div>
-      <div class="t11 faint mt1">${shown} / ${round(tgt)}g</div>
-    </div>`;
-  }).join('');
-
-  return `
-    <div class="w600 t14 mb3">Daily Nutrition</div>
-    <div class="row between" style="align-items:center;">
-      <div class="col center" style="width:56px;"><div class="mono w700 t15">${leftVal}</div><div class="fainter t10">${leftLabel}</div></div>
-      <div class="big-ring-wrap">
-        ${svgRing(pct, { size: 164, stroke: 13, color: COLOR.calories })}
-        <div class="big-ring-center">
-          <div class="mono w700" style="font-size:32px; line-height:1;">${centerVal}</div>
-          <div class="faint t12 mt1">${centerLabel}</div>
-        </div>
-      </div>
-      <div class="col center" style="width:56px;"><div class="mono w700 t15">${target}</div><div class="fainter t10">Target</div></div>
-    </div>
-    <div class="mt4">${macroRows}</div>
-    <div class="pill-toggle mt1">
-      <button class="${mode === 'consumed' ? 'active' : ''}" onclick="setDashMode('consumed')">Consumed</button>
-      <button class="${mode === 'remaining' ? 'active' : ''}" onclick="setDashMode('remaining')">Remaining</button>
-    </div>`;
-}
 
 function setEnergyMode(m) { S.energyMode = m; render(); }
 window.setEnergyMode = setEnergyMode;
 
-function renderEnergyBalanceBigPage() {
-  const today = todayKey();
-  const days = lastNDateKeys(30, today);
-  const t = S.targets;
-  const mode = S.energyMode || 'targets';
-  const refValue = mode === 'targets' ? t.calories : t.estimatedTDEE;
-  const values = days.map((d) => dayTotals(getDayLog(d)).calories);
-  const loggedVals = values.filter((v) => v > 0);
-  const avgIntake = loggedVals.length ? round(loggedVals.reduce((a, b) => a + b, 0) / loggedVals.length) : 0;
-  const diff = avgIntake - refValue;
-
-  return `
-    <div class="w600 t14 mb3">Energy Balance</div>
-    ${svgBarWithReference(values, refValue, { w: 320, h: 108 })}
-    <div class="fainter t10 mt1" style="text-align:right;">Last 30 days</div>
-    <div class="row mt3" style="text-align:center;">
-      <div class="flex1"><div class="mono w700 t16">${avgIntake}</div><div class="fainter t10">Nutrition</div></div>
-      <div class="faint t14 col center" style="width:20px;">−</div>
-      <div class="flex1"><div class="mono w700 t16">${refValue}</div><div class="fainter t10">${mode === 'targets' ? 'Targets' : 'Expenditure'}</div></div>
-      <div class="faint t14 col center" style="width:20px;">=</div>
-      <div class="flex1"><div class="mono w700 t16" style="color:${diff <= 0 ? 'var(--green)' : 'var(--brick)'};">${diff > 0 ? '+' : ''}${diff}</div><div class="fainter t10">Difference</div></div>
-    </div>
-    <div class="pill-toggle mt3">
-      <button class="${mode === 'expenditure' ? 'active' : ''}" onclick="setEnergyMode('expenditure')">Expenditure</button>
-      <button class="${mode === 'targets' ? 'active' : ''}" onclick="setEnergyMode('targets')">Targets</button>
-    </div>`;
-}
 
 // ---------------------------------------------------------------------
 // Dashboard carousel mechanics (native scroll-snap; no library)
@@ -1757,49 +1687,7 @@ function renderEnergyBalanceBigPage() {
 // Pin the carousel to the tallest panel's content height, once. Cards then
 // stretch to fill it, so shorter panels show a taller card rather than a gap,
 // and swiping never changes the height.
-function syncDashHeight() {
-  const el = document.getElementById('dash-carousel');
-  if (!el) return;
-  const cards = Array.from(el.querySelectorAll('.dash-page > .card'));
-  if (!cards.length) return;
-  // Release the imposed height first and measure offsetHeight. Measuring
-  // scrollHeight against an already-set height excludes the card's 1px
-  // borders, so the value shrank by 2px on every call.
-  const prev = el.style.height;
-  el.style.height = 'auto';
-  void el.offsetHeight; // force reflow
-  const tallest = Math.max(...cards.map((c) => c.offsetHeight));
-  el.style.height = tallest > 0 ? `${Math.ceil(tallest)}px` : prev;
-}
-window.addEventListener('resize', syncDashHeight);
 
-function scrollToDashPage(i) {
-  S.dashPage = i;
-  const el = document.getElementById('dash-carousel');
-  if (el) el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
-  document.querySelectorAll('.dash-dot').forEach((d, idx) => d.classList.toggle('active', idx === i));
-  syncDashHeight();
-}
-window.scrollToDashPage = scrollToDashPage;
-let dashObserver = null;
-function setupDashCarousel() {
-  const el = document.getElementById('dash-carousel');
-  if (!el) return;
-  el.scrollLeft = S.dashPage * el.clientWidth;
-  syncDashHeight();
-  if (dashObserver) dashObserver.disconnect();
-  dashObserver = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
-        const idx = Number(entry.target.getAttribute('data-page'));
-        S.dashPage = idx;
-        document.querySelectorAll('.dash-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
-        syncDashHeight();
-      }
-    });
-  }, { root: el, threshold: 0.5 });
-  document.querySelectorAll('.dash-page').forEach((p) => dashObserver.observe(p));
-}
 
 function toggleExpand(key) { S.expanded[key] = !S.expanded[key]; render(); }
 window.toggleExpand = toggleExpand;
