@@ -201,6 +201,14 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .scan-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px calc(18px + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); }
 .scan-btn { border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.35); color: #fff; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
+.row-emoji { font-size: 19px; line-height: 1; flex: none; margin-right: 10px; }
+
+/* Always-available search on the Log tab, docked above the nav */
+.log-searchbar-spacer { height: 58px; }
+.log-searchbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(64px + env(safe-area-inset-bottom)); width: min(480px, 100% - 32px); display: flex; align-items: center; gap: 8px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 999px; padding: 6px 8px 6px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); z-index: 25; }
+.log-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; background: none; border: none; padding: 6px 0; font: inherit; color: var(--ink-fainter); font-size: 13.5px; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent; }
+.log-search svg { flex: none; }
+.log-scan { color: var(--ink-faint); }
 /* Where a search result came from. OFF is crowdsourced, so its rows are
    labelled rather than silently mixed in with curated USDA data. */
 .src-tag { flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; padding: 2px 6px; border-radius: 5px; margin-left: 8px; }
@@ -236,10 +244,10 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .tl-add:hover { color: var(--teal); border-color: var(--teal); }
 .tl-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
 .tl-time { width: 34px; margin-left: -46px; font-size: 10px; color: var(--ink-fainter); padding-top: 15px; text-align: right; flex: none; }
-.tl-card { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; text-align: left; cursor: pointer; font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+.tl-card { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 54px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; text-align: left; cursor: pointer; font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
 .tl-emoji { font-size: 19px; line-height: 1; flex: none; }
 .tl-body { flex: 1; min-width: 0; display: block; }
-.tl-name { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-name { display: block; font-size: 13.5px; font-weight: 500; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tl-macros { display: block; font-size: 10.5px; color: var(--ink-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-edit { flex: none; color: var(--ink-fainter); display: flex; }
 .toast-action { margin-left: 12px; background: none; border: none; color: var(--teal-deep); font-weight: 700; font-size: 13px; cursor: pointer; padding: 2px 4px; }
@@ -1992,6 +2000,13 @@ function renderLog() {
     <span class="fainter t11">${(dayLog.foods || []).length} item${(dayLog.foods || []).length === 1 ? '' : 's'}</span>
   </div>
   ${foodItems}
+  <div class="log-searchbar-spacer"></div>
+  <div class="log-searchbar">
+    <button class="log-search" onclick="openPickerSearch('${cd}')">
+      ${iconSearch}<span>Search for a food</span>
+    </button>
+    <button class="log-scan icon-btn" aria-label="Scan barcode" onclick="barcodeForDate('${cd}')">${iconBarcode}</button>
+  </div>
   `;
 }
 // ---------------------------------------------------------------------
@@ -2105,6 +2120,20 @@ function renderMealTimeline(cd, dayLog) {
   const untimedBlock = untimed.length ? hourBlock(-1, untimed) : '';
   return `<div class="tl">${untimedBlock}${blocks}</div>`;
 }
+
+// The log's own search bar: straight into the Search tab, for the times you
+// are looking up something new rather than re-logging.
+function openPickerSearch(dateKey) {
+  openPicker(dateKey);
+  setPickerTab('search');
+}
+window.openPickerSearch = openPickerSearch;
+
+function barcodeForDate(dateKey) {
+  S.barcode = { forDate: dateKey, at: null, code: '', status: 'idle', product: null, amount: 100, unit: 'g' };
+  render();
+}
+window.barcodeForDate = barcodeForDate;
 
 function jumpToDate(d) { S.currentDate = d; render(); }
 // Tapping a day column on the dashboard opens that day's food log — the
@@ -2368,6 +2397,7 @@ function renderPickerSearch() {
   ${p.status === 'empty' ? `<div class="faint t13" style="padding:8px 0;">No matches. Try a simpler term, or add it under "Custom".</div>` : ''}
   ${p.results.map((r, i) => `
     <button class="food-row" onclick="selectOffResult(${i})">
+      <span class="row-emoji">${foodEmoji(r.name)}</span>
       <div class="flex1" style="min-width:0;">
         <div class="t14 w500" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.name)}</div>
         <div class="t12 faint mono" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.brand ? esc(r.brand) + ' · ' : ''}${round(r.caloriesPer100)} kcal · P${round(r.proteinPer100, 1)} F${round(r.fatPer100, 1)} C${round(r.carbsPer100, 1)} <span class="fainter">/100g</span></div>
@@ -2401,8 +2431,11 @@ function renderPickerRecent() {
   const recents = recentFoods(30);
   const row = (food, sub, onclick) => `
     <button class="food-row" onclick="${onclick}">
-      <div><div class="t14 w500">${esc(food.name)}</div>
-        <div class="t12 faint mono">${food.brand ? esc(food.brand) + ' · ' : ''}${sub}</div></div>
+      <span class="row-emoji">${foodEmoji(food.name)}</span>
+      <div class="flex1" style="min-width:0;">
+        <div class="t14 w500" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(food.name)}</div>
+        <div class="t12 faint mono" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${food.brand ? esc(food.brand) + ' · ' : ''}${sub}</div>
+      </div>
     </button>`;
 
   let out = '';
@@ -2539,7 +2572,8 @@ function amountControls(ctx) {
   const grams = round(unitToGrams(st.amount, unit, food.servingGrams));
   return `
     <label class="field mb2"><span>Amount</span>
-      <input class="input" type="number" inputmode="decimal" step="any" id="${ctx}-amount" value="${st.amount}" oninput="onAmountChange('${ctx}')">
+      <input class="input" type="number" inputmode="decimal" step="any" id="${ctx}-amount" value="${st.amount}"
+             oninput="onAmountChange('${ctx}')" onfocus="amountFocus(this,'${ctx}')" onblur="amountBlur(this,'${ctx}')">
     </label>
     <div class="pill-toggle mb2">
       ${units.map((u) => `<button class="${u === unit ? 'active' : ''}" onclick="setAmountUnit('${ctx}','${u}')">${u}</button>`).join('')}
@@ -2547,6 +2581,25 @@ function amountControls(ctx) {
     <div class="t11 fainter mono mb3" id="${ctx}-grams">${grams}g total</div>
     ${macroTiles(`${ctx}-prev`)}`;
 }
+
+// Tapping the amount clears it so a fresh number can be typed, rather than
+// forcing you to delete "100" first. select() is unreliable on a number input
+// in iOS Safari, so the field is emptied outright and the previous value is
+// restored on blur if nothing was entered.
+function amountFocus(el, ctx) {
+  el.dataset.prev = el.value;
+  el.value = '';
+  onAmountChange(ctx);
+}
+window.amountFocus = amountFocus;
+
+function amountBlur(el, ctx) {
+  if (el.value === '') {
+    el.value = el.dataset.prev || '0';
+    onAmountChange(ctx);
+  }
+}
+window.amountBlur = amountBlur;
 
 function onAmountChange(ctx) {
   // Element check first: these run from setTimeout(0) and the sheet may have
@@ -2682,7 +2735,11 @@ function renderPickerLibrary() {
     ? `<div class="faint t13" style="padding:10px 0;">Nothing saved yet. Foods you create under "Custom" are saved here. Foods from Search and Barcode show up under "Recent".</div>`
     : lib.map((f, i) => `
       <button class="food-row" data-name="${esc(String(f.name || '').toLowerCase())}" onclick="selectSavedFood(${i})">
-        <div><div class="t14 w500">${esc(f.name)}</div><div class="t12 faint mono">${f.calories} kcal per ${esc(f.servingLabel)}</div></div>
+        <span class="row-emoji">${foodEmoji(f.name)}</span>
+        <div class="flex1" style="min-width:0;">
+          <div class="t14 w500" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(f.name)}</div>
+          <div class="t12 faint mono">${f.calories} kcal per ${esc(f.servingLabel)}</div>
+        </div>
       </button>`).join('');
   return `
   <input class="input sans mb3" id="lib-query" placeholder="Search your saved foods..." oninput="filterLibraryList()">
