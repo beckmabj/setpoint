@@ -447,6 +447,10 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 <script>
 'use strict';
 
+// Build number = commit count. Stamped automatically by tools/stamp-build.sh
+// (installed as a pre-commit hook), so it can never drift from what shipped.
+const BUILD = 40;
+
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
 // targets, logs, saved foods) now lives in Firestore, tied to the signed-in
@@ -3470,6 +3474,7 @@ function renderMore() {
       This is a simplified personal tool, not medical advice. Treat targets as a helpful estimate, and check in with a doctor or dietitian for anything health-critical.<br><br>
       Food search uses USDA FoodData Central; barcode lookup uses Open Food Facts. Both need an internet connection. Your log is stored in your account and syncs across devices.
     </div>
+    <div class="fainter t11 mono mt3" style="border-top:1px solid var(--line); padding-top:12px;">Build ${BUILD}</div>
   </div>
   `;
 }
