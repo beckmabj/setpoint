@@ -200,6 +200,34 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
 .row-emoji { font-size: 19px; line-height: 1; flex: none; margin-right: 10px; }
 
+/* Dashboard. The reference's whole character is scale — big headings, a large
+   gauge, generous air — so the type here runs well above the app's usual sizes. */
+.dash-date { font-size: 13px; font-weight: 600; letter-spacing: .09em; color: var(--ink-faint); margin-bottom: 2px; }
+.dash-title { font-size: 42px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; margin: 0 0 22px; }
+.sect-h { font-size: 21px; font-weight: 700; letter-spacing: -.015em; margin: 26px 0 14px; }
+
+.gauge-wrap { position: relative; display: flex; align-items: center; justify-content: center; margin: 4px 0 6px; padding: 0 4px; }
+.gauge-svg { display: block; }
+.gauge-centre { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%); text-align: center; }
+.gauge-centre-v { font-size: 36px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+.gauge-centre-l { font-size: 14px; color: var(--ink-faint); margin-top: 3px; }
+.gauge-side { position: absolute; top: 47%; transform: translateY(-50%); text-align: center; width: 74px; }
+.gauge-left { left: 0; } .gauge-right { right: 0; }
+.gauge-side-v { font-size: 20px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.gauge-side-l { font-size: 12.5px; color: var(--ink-faint); margin-top: 2px; }
+
+.macro-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 10px; }
+.macro-col { text-align: center; }
+.macro-col-l { font-size: 14px; color: var(--ink-faint); margin-bottom: 7px; }
+.macro-col-rule { height: 4px; border-radius: 3px; }
+.macro-col-v { font-size: 15px; font-weight: 600; margin-top: 8px; }
+
+/* Large enough to hit without looking, unlike the small pill toggles elsewhere */
+.mode-toggle { display: flex; background: var(--tan-soft); border-radius: 999px; padding: 4px; margin: 22px auto 0; max-width: 300px; }
+.mode-toggle button { flex: 1; border: none; background: transparent; color: var(--ink-faint); font: inherit;
+  font-size: 15px; font-weight: 600; padding: 11px 0; border-radius: 999px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mode-toggle button.on { background: var(--ink); color: var(--paper); }
+
 /* Dashboard stat tiles. Each sizes to its own content — no equal-height
    constraint, so dead space can't reappear when a metric is added. */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -465,6 +493,15 @@ function weekdayIdx(dateKey) {
   return (new Date(y, m - 1, d).getDay() + 6) % 7; // 0 = Monday
 }
 function startOfWeek(dateKey) { return addDays(dateKey, -weekdayIdx(dateKey)); }
+function formatLongDate(dateKey) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+  const months = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY',
+    'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+  return `${days[dt.getDay()]}, ${months[dt.getMonth()]} ${dt.getDate()}`;
+}
+
 function formatDateLabel(dateKey) {
   const t = todayKey();
   if (dateKey === t) return 'Today';
@@ -728,6 +765,27 @@ function svgBarChart(values, opts) {
   </svg>`;
 }
 
+// An open-bottom arc rather than a closed ring: the gap gives the two side
+// readings somewhere to sit, and the ends read as a scale rather than a pie.
+function svgArcGauge(pct, opts) {
+  opts = opts || {};
+  const size = opts.size || 220, stroke = opts.stroke || 13;
+  const color = opts.color || COLOR.calories;
+  const r = (size - stroke) / 2, c = size / 2;
+  const gap = 100;                    // degrees of opening at the bottom
+  const sweep = 360 - gap;
+  const start = 90 + gap / 2;         // clockwise from bottom-left
+  const rad = (d) => (d * Math.PI) / 180;
+  const pt = (d) => `${round(c + r * Math.cos(rad(d)), 2)},${round(c + r * Math.sin(rad(d)), 2)}`;
+  const track = `M${pt(start)} A${r} ${r} 0 1 1 ${pt(start + sweep)}`;
+  const len = (sweep / 360) * 2 * Math.PI * r;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="gauge-svg">
+    <path d="${track}" fill="none" stroke="${COLOR.lineStrong}" stroke-width="${stroke}" stroke-linecap="round" opacity="0.5"/>
+    <path d="${track}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
+      stroke-dasharray="${round(len, 1)}" stroke-dashoffset="${round(len * (1 - clamp(pct, 0, 1)), 1)}"/>
+  </svg>`;
+}
+
 function svgRing(pct, opts) {
   opts = opts || {};
   const size = opts.size || 34, stroke = opts.stroke || 3.5, color = opts.color || COLOR.teal;
@@ -988,8 +1046,11 @@ function render() {
   }
 }
 function renderTopBar() {
-  return `<div class="row between mb4">
-    <span class="app-title">Tare</span>
+  // The dashboard now opens with a full-width date and page title, so the
+  // wordmark there would just repeat it. Other tabs keep it for orientation.
+  const showMark = S.activeTab !== 'dashboard';
+  return `<div class="row between ${showMark ? 'mb4' : 'mb2'}">
+    <span class="app-title">${showMark ? 'Tare' : ''}</span>
     <span id="sync-pill" class="sync-pill">${syncPillContent()}</span>
   </div>`;
 }
@@ -1608,61 +1669,79 @@ function renderDashboard() {
     </button>`;
   }).join('');
 
-  // Tiles rather than a swipe carousel. Equal-height carousel pages forced
-  // the shorter panels to pad themselves out; a tile sized to its own content
-  // cannot leave dead space, and adding a metric later can't reintroduce it.
   const rem = S.dashMode === 'remaining';
   const todayTotals = dayTotals(getDayLog(today));
-  const macroTile = (key, label, color, suffix) => {
+  const consumed = round(todayTotals.calories);
+  const remaining = round(t.calories - todayTotals.calories);
+  const ringPct = t.calories > 0 ? clamp(todayTotals.calories / t.calories, 0, 1) : 0;
+
+  // Three readings around one gauge, rather than four competing tiles. The
+  // centre is whichever mode is selected, so the toggle changes the headline
+  // number instead of quietly re-scaling bars.
+  const centreVal = rem ? remaining : consumed;
+  const centreLabel = rem ? 'Remaining' : 'Consumed';
+  const leftVal = rem ? consumed : remaining;
+  const leftLabel = rem ? 'Consumed' : 'Remaining';
+
+  const macroCols = [
+    ['Protein', 'protein', 'var(--brick)'],
+    ['Fat', 'fat', 'var(--amber)'],
+    ['Carbs', 'carbs', 'var(--carbs)'],
+  ].map(([label, key, color]) => {
     const val = round(todayTotals[key]);
     const tgt = round(t[key] || 0);
     const shown = rem ? round(tgt - val) : val;
-    const pct = tgt > 0 ? clamp(val / tgt, 0, 1) * 100 : 0;
-    const over = val > tgt;
-    const note = over ? `${round(val - tgt)}${suffix} over` : `${round(tgt - val)}${suffix} left`;
-    return `<div class="tile">
-      <div class="t11 faint">${label}</div>
-      <div class="tile-v mono" style="color:${color};">${shown}<span class="tile-suf">${suffix}</span></div>
-      <div class="t10 fainter">of ${tgt}${suffix} · ${note}</div>
-      <div class="trk mt2"><div class="fil" style="width:${round(pct, 1)}%; background:${color};"></div></div>
+    return `<div class="macro-col">
+      <div class="macro-col-l">${label}</div>
+      <div class="macro-col-rule" style="background:${color};"></div>
+      <div class="macro-col-v">${shown} / ${tgt}g</div>
     </div>`;
-  };
+  }).join('');
 
   return `
-  <div class="row between mb2">
-    <span class="w600 t14">Today</span>
-    <div class="pill-toggle" style="width:auto;">
-      <button class="${!rem ? 'active' : ''}" style="padding:6px 12px;" onclick="setDashMode('consumed')">Consumed</button>
-      <button class="${rem ? 'active' : ''}" style="padding:6px 12px;" onclick="setDashMode('remaining')">Remaining</button>
+  <div class="dash-date">${formatLongDate(today)}</div>
+  <h1 class="dash-title">TODAY</h1>
+
+  <div class="sect-h">Daily Nutrition</div>
+  <div class="gauge-wrap">
+    ${svgArcGauge(ringPct, { size: 194, stroke: 12, color: COLOR.calories })}
+    <div class="gauge-side gauge-left">
+      <div class="gauge-side-v">${leftVal}</div><div class="gauge-side-l">${leftLabel}</div>
+    </div>
+    <div class="gauge-centre">
+      <div class="gauge-centre-v">${centreVal}</div><div class="gauge-centre-l">${centreLabel}</div>
+    </div>
+    <div class="gauge-side gauge-right">
+      <div class="gauge-side-v">${t.calories}</div><div class="gauge-side-l">Target</div>
     </div>
   </div>
-  <div class="tiles mb3">
-    ${macroTile('calories', 'Calories', 'var(--calories)', '')}
-    ${macroTile('protein', 'Protein', 'var(--brick)', 'g')}
-    ${macroTile('fat', 'Fat', 'var(--amber)', 'g')}
-    ${macroTile('carbs', 'Carbs', 'var(--carbs)', 'g')}
+
+  <div class="macro-cols">${macroCols}</div>
+
+  <div class="mode-toggle">
+    <button class="${!rem ? 'on' : ''}" onclick="setDashMode('consumed')">Consumed</button>
+    <button class="${rem ? 'on' : ''}" onclick="setDashMode('remaining')">Remaining</button>
   </div>
 
-  <div class="grid2 mb3">
-    ${renderExpenditureCard()}
-    ${renderWeightTrendCard()}
-  </div>
-
-  <div class="card">
+  <div class="card mt4">
     <div class="row between mb3">
-      <span class="w600 t14">This week</span>
-      <span class="t10 fainter mono">${weekDays.filter((d) => (getDayLog(d).foods || []).length).length} of 7 logged</span>
+      <span class="w600 t15">This week</span>
+      <span class="t11 fainter mono">${weekDays.filter((d) => (getDayLog(d).foods || []).length).length} of 7 logged</span>
     </div>
     <div class="nstrip">${stripDays}</div>
   </div>
 
-  <div class="w600 t14 mb2">Insights &amp; analytics</div>
+  <div class="sect-h">Insights &amp; Analytics</div>
+  <div class="grid2 mb2">
+    ${renderExpenditureCard()}
+    ${renderWeightTrendCard()}
+  </div>
   <div class="grid2 mb2">
     ${renderEnergyBalanceCard()}
     ${renderGoalProgressCard()}
   </div>
 
-  <div class="w600 t14 mb2 mt2">Habits</div>
+  <div class="sect-h">Habits</div>
   <div class="grid2">
     ${renderStreakCard('weighIn', 'Weigh-In')}
     ${renderStreakCard('foodLog', 'Food Logging')}
