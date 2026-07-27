@@ -100,15 +100,18 @@ button, input, select, textarea { font-family: inherit; }
 .mt1{margin-top:4px;} .mt2{margin-top:8px;} .mt3{margin-top:12px;} .mt4{margin-top:16px;}
 .mb1{margin-bottom:4px;} .mb2{margin-bottom:8px;} .mb3{margin-bottom:12px;} .mb4{margin-bottom:16px;}
 
-/* text */
+/* Type scale. Everything ran 10-14px against the dashboard's 13-42px, so
+   moving between tabs felt like two different apps. These are the same five
+   steps the dashboard uses, and the t* names are kept so the ~200 call sites
+   don't all have to change. */
 .faint { color: var(--ink-faint); }
 .fainter { color: var(--ink-fainter); }
-.t10{font-size:10px;} .t11{font-size:11px;} .t12{font-size:12px;} .t13{font-size:13px;}
-.t14{font-size:14px;} .t15{font-size:15px;} .t16{font-size:16px;}
+.t10{font-size:11px;} .t11{font-size:12px;} .t12{font-size:13px;} .t13{font-size:14px;}
+.t14{font-size:15.5px;} .t15{font-size:17px;} .t16{font-size:19px;}
 .w500{font-weight:500;} .w600{font-weight:600;} .w700{font-weight:700;}
 
 /* surfaces */
-.card { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+.card { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
 .card.tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 12px; }
 .pill-toggle { display: flex; background: var(--tan-soft); border-radius: 10px; padding: 3px; }
@@ -116,7 +119,7 @@ button, input, select, textarea { font-family: inherit; }
 .pill-toggle button.active { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
 
 /* buttons */
-.btn { border: none; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.btn { border: none; border-radius: 11px; font-size: 15px; font-weight: 600; padding: 12px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .btn-primary { background: var(--accent-solid); color: #fff; }
 .btn-dark { background: var(--btn-dark-bg); color: var(--btn-dark-fg); }
 .btn-outline { background: transparent; border: 1px solid var(--line); color: var(--ink-faint); }
@@ -130,10 +133,10 @@ button, input, select, textarea { font-family: inherit; }
 
 /* inputs */
 label.field { display: flex; flex-direction: column; gap: 4px; }
-label.field span { color: var(--ink-faint); font-size: 12px; }
+label.field span { color: var(--ink-faint); font-size: 13px; }
 .input, select.input {
   font-family: 'IBM Plex Mono', monospace; background: var(--paper); border: 1px solid var(--line);
-  border-radius: 8px; padding: 9px 11px; font-size: 14px; color: var(--ink); width: 100%;
+  border-radius: 10px; padding: 12px 13px; font-size: 16px; color: var(--ink); width: 100%;
 }
 select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .input.sans { font-family: 'IBM Plex Sans', sans-serif; }
@@ -150,7 +153,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .nav-inner { max-width: 480px; margin: 0 auto; display: flex; align-items: center; }
 .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 0 10px; background: none; border: none; color: var(--ink-fainter); cursor: pointer; }
 .nav-item.active { color: var(--teal); }
-.nav-item span { font-size: 10.5px; font-weight: 500; }
+.nav-item span { font-size: 11.5px; font-weight: 500; }
 .nav-item.active span { font-weight: 600; }
 .nav-fab { width: 46px; height: 46px; border-radius: 50%; background: var(--accent-solid); color: #fff; border: none; display: flex; align-items: center; justify-content: center; margin-top: -20px; box-shadow: 0 4px 12px rgba(45,93,94,0.35); cursor: pointer; }
 
@@ -176,7 +179,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 /* max-height is measured against the space actually left once the keyboard
    is up, minus the status bar. A flat 86dvh let the sheet's own header slide
    up underneath the notch when the keypad appeared. */
-.sheet { width: 100%; max-width: 480px; background: var(--paper); border-radius: 18px 18px 0 0; max-height: calc(100dvh - var(--kb-inset, 0px) - env(safe-area-inset-top) - 14px); overflow-y: auto; overscroll-behavior: contain; padding: 16px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); box-shadow: 0 -8px 30px rgba(0,0,0,0.15); -webkit-overflow-scrolling: touch; }
+.sheet { width: 100%; max-width: 480px; background: var(--paper); border-radius: 22px 22px 0 0; max-height: calc(100dvh - var(--kb-inset, 0px) - env(safe-area-inset-top) - 14px); overflow-y: auto; overscroll-behavior: contain; padding: 16px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); box-shadow: 0 -8px 30px rgba(0,0,0,0.15); -webkit-overflow-scrolling: touch; }
 
 /* Camera scanner. Lives outside #app so render() can't destroy the <video>;
    deliberately fixed dark in both themes, since it sits over a camera feed. */
@@ -187,7 +190,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .scan-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px calc(18px + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); }
 .scan-btn { border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.35); color: #fff; border-radius: 9px; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
-.row-emoji { font-size: 19px; line-height: 1; flex: none; margin-right: 10px; }
+.row-emoji { font-size: 22px; line-height: 1; flex: none; margin-right: 11px; }
 
 /* Dashboard. The reference's whole character is scale — big headings, a large
    gauge, generous air — so the type here runs well above the app's usual sizes. */
@@ -255,7 +258,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 /* Always-available search on the Log tab, docked above the nav */
 .log-searchbar-spacer { height: 58px; }
 .log-searchbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(64px + env(safe-area-inset-bottom)); width: min(480px, 100% - 32px); display: flex; align-items: center; gap: 8px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 999px; padding: 6px 8px 6px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); z-index: 25; }
-.log-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; background: none; border: none; padding: 6px 0; font: inherit; color: var(--ink-fainter); font-size: 13.5px; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent; }
+.log-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 8px 0; font: inherit; color: var(--ink-fainter); font-size: 15px; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent; }
 .log-search svg { flex: none; }
 .log-scan { color: var(--ink-faint); }
 /* Where a search result came from. OFF is crowdsourced, so its rows are
@@ -282,22 +285,22 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .tl-hour::before { content: ''; position: absolute; left: 21px; top: 0; bottom: -4px; width: 1px; background: var(--line); }
 .tl-hour:last-child::before { bottom: 50%; }
 .tl-hour-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px -46px; }
-.tl-hour-chip { font-size: 11.5px; font-weight: 600; color: var(--ink-faint); background: var(--tan-soft); border-radius: 999px; padding: 3px 9px; min-width: 52px; text-align: center; }
+.tl-hour-chip { font-size: 13px; font-weight: 700; color: var(--ink-faint); background: var(--tan-soft); border-radius: 999px; padding: 5px 12px; min-width: 58px; text-align: center; }
 .tl-hour.is-empty .tl-hour-chip { background: transparent; color: var(--ink-fainter); }
 .tl-hour.is-empty .tl-hour-head { margin-top: 2px; margin-bottom: 2px; }
 .tl-hour.is-now .tl-hour-chip { background: var(--teal-soft); color: var(--teal-deep); font-weight: 700; }
-.tl-hour-tot { margin-left: auto; font-size: 10.5px; color: var(--ink-faint); }
+.tl-hour-tot { margin-left: auto; font-size: 11.5px; color: var(--ink-faint); }
 .tl-add { width: 22px; height: 22px; border-radius: 999px; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-fainter); display: inline-flex; align-items: center; justify-content: center; padding: 0; position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .tl-add svg { width: 12px; height: 12px; }
 .tl-add::after { content: ''; position: absolute; inset: -11px; }
 .tl-add:hover { color: var(--teal); border-color: var(--teal); }
 .tl-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
-.tl-time { width: 34px; margin-left: -46px; font-size: 10px; color: var(--ink-fainter); padding-top: 15px; text-align: right; flex: none; }
-.tl-card { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 54px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; text-align: left; cursor: pointer; font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
-.tl-emoji { font-size: 19px; line-height: 1; flex: none; }
+.tl-time { width: 34px; margin-left: -46px; font-size: 11px; color: var(--ink-fainter); padding-top: 15px; text-align: right; flex: none; }
+.tl-card { flex: 1; min-width: 0; display: flex; align-items: center; gap: 11px; min-height: 60px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 11px 13px; text-align: left; cursor: pointer; font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+.tl-emoji { font-size: 22px; line-height: 1; flex: none; }
 .tl-body { flex: 1; min-width: 0; display: block; }
-.tl-name { display: block; font-size: 13.5px; font-weight: 500; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.tl-macros { display: block; font-size: 10.5px; color: var(--ink-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-name { display: block; font-size: 15px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tl-macros { display: block; font-size: 12px; color: var(--ink-faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-edit { flex: none; color: var(--ink-fainter); display: flex; }
 .toast-action { margin-left: 12px; background: none; border: none; color: var(--teal-deep); font-weight: 700; font-size: 13px; cursor: pointer; padding: 2px 4px; }
 /* A day with nothing logged: a hairline track, never a filled bar */
@@ -322,7 +325,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 @media (min-width: 480px) { .overlay { align-items: center; } .sheet { border-radius: 18px; max-height: 80vh; } }
 
 /* food picker tabs reuse .pill-toggle */
-.food-row { display: flex; align-items: center; justify-content: space-between; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; text-align: left; width: 100%; }
+.food-row { display: flex; align-items: center; justify-content: space-between; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 13px; padding: 13px 14px; cursor: pointer; text-align: left; width: 100%; }
 .food-row + .food-row { margin-top: 6px; }
 .macro-tile { background: var(--tan-soft); border-radius: 8px; padding: 7px 0; text-align: center; }
 .macro-tile .v { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 14px; }
@@ -1052,7 +1055,9 @@ function render() {
 function renderTopBar() {
   // The dashboard now opens with a full-width date and page title, so the
   // wordmark there would just repeat it. Other tabs keep it for orientation.
-  const showMark = S.activeTab !== 'dashboard';
+  // Dashboard and Log both open with a date and page title, so the wordmark
+  // would only repeat them. Strategy and More still need the orientation.
+  const showMark = S.activeTab !== 'dashboard' && S.activeTab !== 'log';
   return `<div class="row between ${showMark ? 'mb4' : 'mb2'}">
     <span class="app-title">${showMark ? 'Tare' : ''}</span>
     <span id="sync-pill" class="sync-pill">${syncPillContent()}</span>
@@ -1492,7 +1497,7 @@ function renderAuthScreen() {
           <div class="mono w700" style="font-size:28px; letter-spacing:-0.02em;">Tare</div>
         </div>
         <div class="card">
-          <div class="w600 t14 mb2">Couldn't connect</div>
+          <div class="sect-h" style="margin:0 0 10px;">Couldn't connect</div>
           <div class="faint t13" style="line-height:1.6;">Tare couldn't reach the sign-in service. This usually means you're offline or the connection was blocked. Check your connection and reload the page.</div>
           <button class="btn btn-primary btn-block mt3" onclick="location.reload()">Reload</button>
         </div>
@@ -1738,7 +1743,7 @@ function renderDashboard() {
 
   <div class="card mt4">
     <div class="row between mb3">
-      <span class="w600 t15">This week</span>
+      <span class="sect-h" style="margin:0;">This week</span>
       <span class="t11 fainter mono">${weekDays.filter((d) => (getDayLog(d).foods || []).length).length} of 7 logged</span>
     </div>
     <div class="devstrip">${stripDays}</div>
@@ -1992,10 +1997,13 @@ function renderLog() {
   const foodItems = renderMealTimeline(cd, dayLog);
 
   return `
+  <div class="dash-date">${formatLongDate(cd)}</div>
   <div class="row between mb3">
-    <button class="ghost-btn" onclick="jumpToDate(addDays('${weekStart}', -7))">${iconChevronL}</button>
-    <span class="mono w600 t14">${formatDateLabel(cd)}</span>
-    <button class="ghost-btn" onclick="jumpToDate(addDays('${weekStart}', 7))">${iconChevronR}</button>
+    <h1 class="dash-title" style="margin-bottom:0;">${cd === todayKey() ? 'TODAY' : formatShort(cd).toUpperCase()}</h1>
+    <div class="row g2">
+      <button class="ghost-btn" aria-label="Previous week" onclick="jumpToDate(addDays('${weekStart}', -7))">${iconChevronL}</button>
+      <button class="ghost-btn" aria-label="Next week" onclick="jumpToDate(addDays('${weekStart}', 7))">${iconChevronR}</button>
+    </div>
   </div>
   <div class="card">
     <div class="day-strip">${strip}</div>
@@ -2003,7 +2011,7 @@ function renderLog() {
   </div>
 
   <div class="row between mb2 mt2">
-    <span class="w600 t14">Food log</span>
+    <span class="sect-h" style="margin:0;">Food log</span>
     <span class="fainter t11">${(dayLog.foods || []).length} item${(dayLog.foods || []).length === 1 ? '' : 's'}</span>
   </div>
   ${foodItems}
@@ -2366,7 +2374,7 @@ function renderPicker() {
   return `<div class="overlay" onclick="closePicker()">
     <div class="sheet" onclick="event.stopPropagation()">
       <div class="row between mb3">
-        <span class="mono w600 t16">${p.editing ? 'Edit entry' : 'Add food'}</span>
+        <span class="sect-h" style="margin:0;">${p.editing ? 'Edit entry' : 'Add food'}</span>
         <div class="row g2">
           ${p.editing ? '' : `<button class="icon-btn" aria-label="Scan barcode" title="Scan barcode" onclick="barcodeFromPicker()">${iconBarcode}</button>`}
           <button class="icon-btn" aria-label="Close" onclick="closePicker()">${iconClose}</button>
@@ -3111,7 +3119,7 @@ function renderBarcodeSheet() {
   }
   return `<div class="overlay" onclick="closeBarcodeSheet()">
     <div class="sheet" onclick="event.stopPropagation()">
-      <div class="row between mb3"><span class="mono w600 t16">Barcode</span><button class="icon-btn" onclick="closeBarcodeSheet()">${iconClose}</button></div>
+      <div class="row between mb3"><span class="sect-h" style="margin:0;">Barcode</span><button class="icon-btn" onclick="closeBarcodeSheet()">${iconClose}</button></div>
       ${body}
     </div>
   </div>`;
@@ -3137,7 +3145,7 @@ function renderStrategy() {
 
   return `
   <div class="card">
-    <div class="w600 t14 mb2">Current program</div>
+    <div class="sect-h" style="margin:0 0 10px;">Current program</div>
     <div class="faint t11 mb2">${formatShort(programStart)} — Now</div>
     <div class="grid7" style="display:grid; grid-template-columns:repeat(7,1fr); gap:5px;">${weekBlocks}</div>
     <div class="row between mt3" style="grid-template-columns:repeat(7,1fr);">
@@ -3148,14 +3156,14 @@ function renderStrategy() {
   </div>
 
   <div class="card">
-    <div class="row g1 mb1"><span class="w600 t14">Update targets from your data</span></div>
+    <div class="row g1 mb1"><span class="sect-h" style="margin:0;">Update targets from your data</span></div>
     <div class="faint t12 mb2" style="line-height:1.5;">Uses your last 14 days of logged weight + food to re-estimate real maintenance calories — the adaptive part that makes targets track your actual body, not a fixed formula. Needs 7+ days with both weight and food logged.</div>
     <button class="btn btn-primary btn-block" onclick="runRecalc()">Check my numbers</button>
     <div id="recalc-result">${renderRecalcResult()}</div>
   </div>
 
   <div class="card">
-    <div class="row g1 mb1"><span class="w600 t14">Set targets manually</span></div>
+    <div class="row g1 mb1"><span class="sect-h" style="margin:0;">Set targets manually</span></div>
     <div class="faint t12 mb3" style="line-height:1.5;">Overrides the formula and the adaptive estimate with numbers you choose — useful if you're following a coach's plan or carrying targets over from another app. Adaptive recalculation stays available; running it will replace these.</div>
     <div class="grid2 mb2">
       <label class="field"><span>Calories</span><input class="input" type="number" inputmode="numeric" id="man-cal" value="${t.calories}" oninput="updateManualSplit()"></label>
@@ -3168,7 +3176,7 @@ function renderStrategy() {
   </div>
 
   <div class="card">
-    <div class="w600 t14 mb3">Profile</div>
+    <div class="sect-h" style="margin:0 0 14px;">Profile</div>
     <div class="grid2">
       <label class="field"><span>Sex</span><select class="input" id="set-sex"><option value="female" ${p.sex === 'female' ? 'selected' : ''}>Female</option><option value="male" ${p.sex === 'male' ? 'selected' : ''}>Male</option></select></label>
       <label class="field"><span>Age</span><input class="input" type="number" id="set-age" value="${p.age}"></label>
@@ -3192,7 +3200,7 @@ function renderStrategy() {
   </div>
 
   ${t.history && t.history.length ? `<div class="card">
-    <div class="w600 t14 mb2">Target history</div>
+    <div class="sect-h" style="margin:0 0 10px;">Target history</div>
     ${t.history.slice().reverse().slice(0, 12).map((h) => `<div class="row between t12 mono faint" style="padding:3px 0;"><span>${esc(h.date || '')}</span><span>${round(num(h.calories, 0))} kcal (${esc(h.source || 'manual')})</span></div>`).join('')}
   </div>` : ''}
   `;
@@ -3349,7 +3357,7 @@ function renderDuplicateFoodsCard() {
   const groups = duplicateFoodGroups();
   if (!groups.length) return '';
   return `<div class="card">
-    <div class="w600 t14 mb2">Duplicate foods</div>
+    <div class="sect-h" style="margin:0 0 10px;">Duplicate foods</div>
     <div class="faint t12 mb3" style="line-height:1.5;">These look like the same food logged under different names, which splits your history and gives you two Recents rows. Pick the name to keep — the others are renamed to match. Your logged amounts and macros are untouched.</div>
     ${groups.map((g, gi) => `<div class="dupe-group">
       ${g.map((f, fi) => `<button class="dupe-row" onclick="mergeDuplicateGroup(${gi}, ${fi})">
@@ -3413,16 +3421,16 @@ function renderMore() {
   const themeBtn = (key, label) => `<button class="${pref === key ? 'active' : ''}" onclick="setThemePref('${key}')">${label}</button>`;
   return `
   <div class="card">
-    <div class="w600 t14 mb2">Account</div>
+    <div class="sect-h" style="margin:0 0 10px;">Account</div>
     <div class="t13 faint mb3">Signed in as ${esc((S.authUser && S.authUser.email) || '')}</div>
     <button class="btn btn-outline btn-block" onclick="signOutUser()">Sign out</button>
   </div>
   <div class="card">
-    <div class="w600 t14 mb2">Appearance</div>
+    <div class="sect-h" style="margin:0 0 10px;">Appearance</div>
     <div class="pill-toggle">${themeBtn('light', 'Light')}${themeBtn('dark', 'Dark')}${themeBtn('system', 'System')}</div>
   </div>
   <div class="card">
-    <div class="w600 t14 mb2">Backup &amp; restore</div>
+    <div class="sect-h" style="margin:0 0 10px;">Backup &amp; restore</div>
     <div class="faint t12 mb3" style="line-height:1.5;">Your data syncs to your account and is available on any device you sign in to. Export a backup now and then so you never lose it — especially before clearing browser data or switching phones.</div>
     <button class="btn btn-primary btn-block mb2" onclick="exportData()">Export backup (.json)</button>
     <div class="grid2 mb2">
@@ -3441,13 +3449,13 @@ function renderMore() {
   ${renderDuplicateFoodsCard()}
 
   <div class="card">
-    <div class="w600 t14 mb2">Reset</div>
+    <div class="sect-h" style="margin:0 0 10px;">Reset</div>
     <div class="faint t12 mb2">Erases your profile, targets, logs, and saved foods from your account — on every device, not just this one. This cannot be undone.</div>
     <button class="btn btn-outline btn-block" style="color:var(--brick); border-color:var(--brick-soft);" onclick="resetAllData()">Erase all data</button>
   </div>
 
   <div class="card">
-    <div class="w600 t14 mb2">About Tare</div>
+    <div class="sect-h" style="margin:0 0 10px;">About Tare</div>
     <div class="faint t12" style="line-height:1.6;">
       Tare estimates your maintenance calories from a formula at first, then — once you've logged weight and food consistently — recalculates it from what actually happened to your trend weight versus what you ate. That's what "Update targets from your data" on the Strategy tab does.<br><br>
       This is a simplified personal tool, not medical advice. Treat targets as a helpful estimate, and check in with a doctor or dietitian for anything health-critical.<br><br>
