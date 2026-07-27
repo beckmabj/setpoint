@@ -8,6 +8,12 @@ description: Claim and implement one approved Linear issue, or repair one Finn L
 One invocation performs one unit: repair one eligible PR or build one approved
 issue end to end.
 
+**End an idle pass immediately.** These run on a schedule, so most passes will find
+nothing to do. Check for repair work and for an eligible `agent-ready` issue first;
+if there is neither, say so in one line and stop — no deep repository reading, no
+branch, no further tool use. A cheap no-op is what makes a slow interval
+affordable.
+
 ## Preflight
 
 Before mutating anything:
