@@ -203,6 +203,17 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .line-rule { flex: 1; height: 1px; background: var(--line); }
 .row-emoji { font-size: 19px; line-height: 1; flex: none; margin-right: 10px; }
 
+/* Food detail */
+.fd { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.fd-split { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.fd-chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.fd-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-fainter); margin: 12px 0 8px; }
+.fd-rings { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.fd-ring { text-align: center; }
+.fd-ring-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+.fd-ring-pct { position: absolute; font-size: 10px; font-weight: 700; color: var(--ink-faint); }
+.fd-ring-label { font-size: 10px; color: var(--ink-fainter); margin-top: 3px; }
+
 /* Always-available search on the Log tab, docked above the nav */
 .log-searchbar-spacer { height: 58px; }
 .log-searchbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(64px + env(safe-area-inset-bottom)); width: min(480px, 100% - 32px); display: flex; align-items: center; gap: 8px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 999px; padding: 6px 8px 6px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); z-index: 25; }
@@ -517,7 +528,15 @@ function macrosFor(food, amount, unit) {
     protein: round((food.proteinPer100 * g) / 100, 1),
     carbs: round((food.carbsPer100 * g) / 100, 1),
     fat: round((food.fatPer100 * g) / 100, 1),
+    fiber: round(((food.fiberPer100 || 0) * g) / 100, 1),
   };
+}
+
+// No user-set fibre goal: the standard recommendation is 14g per 1000 kcal,
+// so it follows the calorie target rather than being another thing to tune.
+function fiberTarget() {
+  const cal = (S.targets && S.targets.calories) || 0;
+  return round((cal / 1000) * 14, 1);
 }
 
 function amountLabel(amount, unit, servingGrams) {
@@ -560,7 +579,8 @@ function dayTotals(dayLog) {
   return foods.reduce((a, f) => ({
     calories: a.calories + (f.calories || 0), protein: a.protein + (f.protein || 0),
     carbs: a.carbs + (f.carbs || 0), fat: a.fat + (f.fat || 0),
-  }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    fiber: a.fiber + (f.fiber || 0),
+  }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
 }
 
 // Latest smoothed trend weight, or null if there aren't enough weigh-ins.
@@ -1088,6 +1108,7 @@ function mapUsdaFood(f) {
   const protein = Math.max(0, usdaNutrient(f, 'Protein', 'G') || 0);
   const fat = Math.max(0, usdaNutrient(f, 'Total lipid (fat)', 'G') || 0);
   const carbs = Math.max(0, usdaNutrient(f, 'Carbohydrate, by difference', 'G') || 0);
+  const fiber = Math.max(0, usdaNutrient(f, 'Fiber, total dietary', 'G') || 0);
   // Some Foundation entries carry macros but no Energy row. Fall back to
   // Atwater factors (4/4/9) rather than dropping an otherwise good result.
   let calories = usdaNutrient(f, 'Energy', 'KCAL');
@@ -1098,7 +1119,7 @@ function mapUsdaFood(f) {
     brand: brand ? String(brand).trim() : '',
     dataType: f.dataType || '',
     caloriesPer100: calories, proteinPer100: protein,
-    carbsPer100: carbs, fatPer100: fat,
+    carbsPer100: carbs, fatPer100: fat, fiberPer100: fiber,
     // Branded items usually declare a label serving; curated ones don't.
     servingGrams: usdaServingGrams(f),
     servingLabel: f.householdServingFullText || '',
@@ -1307,6 +1328,7 @@ function mapOffFood(p) {
     proteinPer100: Number(n.proteins_100g) || 0,
     carbsPer100: Number(n.carbohydrates_100g) || 0,
     fatPer100: Number(n.fat_100g) || 0,
+    fiberPer100: Math.max(0, Number(n.fiber_100g) || 0),
     servingGrams: (sq > 0 && (squ === 'g' || squ === 'gram' || squ === 'grams')) ? sq : null,
   };
 }
@@ -2221,7 +2243,7 @@ function buildEntry(food, amount, unit, atMs) {
     servingGrams: food.servingGrams || null,
     per100: {
       calories: food.caloriesPer100, protein: food.proteinPer100,
-      carbs: food.carbsPer100, fat: food.fatPer100,
+      carbs: food.carbsPer100, fat: food.fatPer100, fiber: food.fiberPer100 || 0,
     },
     label: amountLabel(amount, unit, food.servingGrams),
   }, macros);
@@ -2234,7 +2256,7 @@ function entryToFood(e) {
   return {
     id: e.foodId || e.name, name: e.name, brand: e.brand || '',
     caloriesPer100: p.calories, proteinPer100: p.protein,
-    carbsPer100: p.carbs, fatPer100: p.fat,
+    carbsPer100: p.carbs, fatPer100: p.fat, fiberPer100: p.fiber || 0,
     servingGrams: e.servingGrams || null,
   };
 }
@@ -2410,6 +2432,58 @@ function offPreview(product, grams) {
   return macrosFor(product, grams, 'g');
 }
 
+
+// ---------------------------------------------------------------------
+// Time-of-day picks
+//
+// Eating is habitual: the same few foods show up at the same hours. Scoring
+// every logged food by how often it appears NEAR the current hour surfaces
+// the handful you're actually about to eat, instead of a flat recency list.
+//
+// A +/-1 hour window with a half weight on the neighbours, so a 7:55 habit
+// still counts at 8. Recency breaks ties, so a food dropped weeks ago sinks
+// below one eaten yesterday at the same time.
+// ---------------------------------------------------------------------
+function picksForHour(hour, limit) {
+  const scores = new Map();
+  const now = Date.now();
+  Object.keys(S.logs).forEach((dk) => {
+    ((S.logs[dk] || {}).foods || []).forEach((e) => {
+      const t = entryTime(e);
+      if (t <= 0) return;
+      const food = entryToFood(e);
+      if (!food) return;
+      const h = new Date(t).getHours();
+      let diff = Math.abs(h - hour);
+      if (diff > 12) diff = 24 - diff;      // 11 PM and 12 AM are an hour apart
+      if (diff > 1) return;
+      const weight = diff === 0 ? 1 : 0.5;
+      const key = foodKey(e.foodId || e.name);
+      const cur = scores.get(key) || { food, score: 0, last: 0, amount: e.amount || 100, unit: e.unit || 'g' };
+      cur.score += weight;
+      if (t > cur.last) { cur.last = t; cur.amount = e.amount || 100; cur.unit = e.unit || 'g'; cur.food = food; }
+      scores.set(key, cur);
+    });
+  });
+  return Array.from(scores.values())
+    .filter((x) => x.score >= 1)            // one-off meals aren't habits
+    .sort((a, b) => (b.score - a.score) || (b.last - a.last))
+    .slice(0, limit || 6);
+}
+
+function selectPick(i) {
+  const p = S.picker;
+  const hour = p.at ? new Date(p.at).getHours() : new Date().getHours();
+  const pick = picksForHour(hour, 6)[i];
+  if (!pick) return;
+  p.selectedRecent = pick.food;
+  p.amount = pick.amount;
+  p.unit = unitsFor(pick.food).includes(pick.unit) ? pick.unit : 'g';
+  render();
+  setTimeout(() => onAmountChange('recent'), 0);
+}
+window.selectPick = selectPick;
+
 // ---- Recent + Favorites tab -----------------------------------------
 function renderPickerRecent() {
   const p = S.picker;
@@ -2429,6 +2503,8 @@ function renderPickerRecent() {
 
   const favs = favoriteFoods();
   const recents = recentFoods(30);
+  const pickHour = p.at ? new Date(p.at).getHours() : new Date().getHours();
+  const picks = picksForHour(pickHour, 6);
   const row = (food, sub, onclick) => `
     <button class="food-row" onclick="${onclick}">
       <span class="row-emoji">${foodEmoji(food.name)}</span>
@@ -2439,6 +2515,15 @@ function renderPickerRecent() {
     </button>`;
 
   let out = '';
+  if (picks.length) {
+    out += `<div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">${hourLabel(pickHour).toUpperCase()} PICKS</div>`;
+    out += picks.map((pk, i) => row(
+      pk.food,
+      `usually here · ${amountLabel(pk.amount, pk.unit, pk.food.servingGrams)}`,
+      `selectPick(${i})`,
+    )).join('');
+    out += `<div class="mb3"></div>`;
+  }
   if (favs.length) {
     out += `<div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">FAVORITES</div>`;
     out += favs.map((f, i) => row(f, `${round(f.caloriesPer100)} kcal / 100g`, `selectFavorite(${i})`)).join('');
@@ -2579,7 +2664,8 @@ function amountControls(ctx) {
       ${units.map((u) => `<button class="${u === unit ? 'active' : ''}" onclick="setAmountUnit('${ctx}','${u}')">${u}</button>`).join('')}
     </div>
     <div class="t11 fainter mono mb3" id="${ctx}-grams">${grams}g total</div>
-    ${macroTiles(`${ctx}-prev`)}`;
+    ${macroTiles(`${ctx}-prev`)}
+    <div id="${ctx}-detail">${foodDetailPanel(ctx)}</div>`;
 }
 
 // Tapping the amount clears it so a fresh number can be typed, rather than
@@ -2601,6 +2687,66 @@ function amountBlur(el, ctx) {
 }
 window.amountBlur = amountBlur;
 
+
+// ---------------------------------------------------------------------
+// Food detail
+//
+// What this portion actually does to the day: the calorie split across
+// macros, and how much of each daily target it eats. Rings rather than bars
+// so it reads at a glance and matches the dashboard's language.
+// ---------------------------------------------------------------------
+function foodDetailPanel(ctx) {
+  const st = ctxState(ctx), food = ctxFood(ctx);
+  if (!st || !food) return '';
+  const m = macrosFor(food, st.amount, st.unit);
+  const t = S.targets || {};
+
+  // Share of THIS portion's calories, from the macros themselves — a food
+  // whose label kcal disagrees with 4/4/9 shouldn't skew the split.
+  const fromMacros = m.protein * 4 + m.carbs * 4 + m.fat * 9;
+  const pct = (kcal) => (fromMacros > 0 ? Math.round((kcal / fromMacros) * 100) : 0);
+  const split = [
+    { label: 'Protein', v: pct(m.protein * 4), c: COLOR.brick },
+    { label: 'Fat', v: pct(m.fat * 9), c: COLOR.amber },
+    { label: 'Carbs', v: pct(m.carbs * 4), c: COLOR.carbs },
+  ];
+
+  const impact = [
+    { label: 'Calories', val: m.calories, target: t.calories, c: COLOR.calories },
+    { label: 'Protein', val: m.protein, target: t.protein, c: COLOR.brick },
+    { label: 'Fat', val: m.fat, target: t.fat, c: COLOR.amber },
+    { label: 'Carbs', val: m.carbs, target: t.carbs, c: COLOR.carbs },
+  ];
+
+  const fibTarget = fiberTarget();
+  const fibPct = fibTarget > 0 ? clamp(m.fiber / fibTarget, 0, 1) : 0;
+
+  return `<div class="fd">
+    <div class="fd-split">
+      ${split.map((x) => `<span class="fd-chip" style="background:${x.c}1f; color:${x.c};">${x.v}% ${x.label}</span>`).join('')}
+    </div>
+    <div class="fd-label">Impact on today</div>
+    <div class="fd-rings">
+      ${impact.map((x) => {
+        const p = x.target > 0 ? clamp(x.val / x.target, 0, 1) : 0;
+        return `<div class="fd-ring">
+          <div class="fd-ring-wrap">
+            ${svgRing(p, { size: 46, stroke: 4, color: x.c })}
+            <span class="fd-ring-pct mono">${Math.round(p * 100)}%</span>
+          </div>
+          <div class="fd-ring-label">${x.label}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="fd-label">Fiber</div>
+    <div class="row between t11 mono faint mb1">
+      <span>${m.fiber}g of ${fibTarget}g today</span><span>${Math.round(fibPct * 100)}%</span>
+    </div>
+    <div class="daybar-track"><div class="daybar-fill" style="width:${round(fibPct * 100, 1)}%; background:var(--green);"></div></div>
+    <div class="fainter t10 mt1">Fiber goal follows your calorie target at 14g per 1,000 kcal.</div>
+  </div>`;
+}
+
 function onAmountChange(ctx) {
   // Element check first: these run from setTimeout(0) and the sheet may have
   // closed in between, in which case ctxFood() would throw.
@@ -2612,6 +2758,8 @@ function onAmountChange(ctx) {
   const gEl = document.getElementById(`${ctx}-grams`);
   if (gEl) gEl.textContent = `${round(unitToGrams(st.amount, st.unit, food.servingGrams))}g total`;
   fillMacroTiles(`${ctx}-prev`, macrosFor(food, st.amount, st.unit));
+  const detail = document.getElementById(`${ctx}-detail`);
+  if (detail) detail.innerHTML = foodDetailPanel(ctx);
 }
 window.onAmountChange = onAmountChange;
 
@@ -3423,7 +3571,7 @@ function cleanEntry(raw, dateKey, i) {
     foodId: safeId(raw.foodId, ''),
     label: String(raw.label || '').slice(0, 120),
     calories: num(raw.calories, 0), protein: num(raw.protein, 0),
-    carbs: num(raw.carbs, 0), fat: num(raw.fat, 0),
+    carbs: num(raw.carbs, 0), fat: num(raw.fat, 0), fiber: num(raw.fiber, 0),
   };
   if (raw.unit) { e.unit = String(raw.unit).slice(0, 12); e.amount = num(raw.amount, 0); }
   if (raw.servingGrams != null) e.servingGrams = num(raw.servingGrams, null);
@@ -3431,6 +3579,7 @@ function cleanEntry(raw, dateKey, i) {
     e.per100 = {
       calories: num(raw.per100.calories, 0), protein: num(raw.per100.protein, 0),
       carbs: num(raw.per100.carbs, 0), fat: num(raw.per100.fat, 0),
+      fiber: num(raw.per100.fiber, 0),
     };
   }
   return e;
