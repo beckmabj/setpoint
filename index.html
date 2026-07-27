@@ -449,7 +449,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 44;
+const BUILD = 45;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -850,6 +850,7 @@ const S = {
   targets: null,
   logs: {},
   savedFoods: [],
+  recipes: [],
   activeTab: 'dashboard',
   currentDate: todayKey(),
   // Consumed by default: on a fully logged day "remaining" approaches zero,
@@ -910,6 +911,7 @@ function persistLogs(months) {
     });
 }
 function persistSavedFoods() { saveField('savedFoods', S.savedFoods); }
+function persistRecipes() { saveField('recipes', S.recipes); }
 function persistProfile() { saveField('profile', S.profile); }
 function persistTargets() { saveField('targets', S.targets); }
 // Number of writes queued locally but not yet acknowledged by the server.
@@ -996,7 +998,7 @@ window.onAuthReady = async function (user) {
   S.authLoading = false;
   S.authUser = user;
   if (!user) {
-    currentUid = null; S.profile = null; S.targets = null; S.logs = {}; S.savedFoods = [];
+    currentUid = null; S.profile = null; S.targets = null; S.logs = {}; S.savedFoods = []; S.recipes = [];
     render(); return;
   }
   currentUid = user.uid;
@@ -1008,6 +1010,8 @@ window.onAuthReady = async function (user) {
       S.profile = data.profile || null;
       S.targets = data.targets || null;
       S.savedFoods = data.savedFoods || [];
+      // Accounts created before recipes existed simply have no field here.
+      S.recipes = cleanRecipes(data.recipes);
 
       // Month shards are the source of truth. A legacy `logs` map means this
       // account hasn't migrated yet.
@@ -2355,6 +2359,7 @@ function openPicker(dateKey, atMs) {
     selectedOff: null, selectedRecent: null, amount: 100, unit: 'g',
     selectedSaved: null, multiplier: 1,
     copyDay: null, copyPicked: null,
+    selectedRecipe: null, recipeMult: 1,
   };
   render();
 }
@@ -2365,6 +2370,7 @@ function setPickerTab(tab) {
   S.picker.tab = tab;
   S.picker.selectedOff = null; S.picker.selectedSaved = null; S.picker.selectedRecent = null;
   S.picker.copyDay = null; S.picker.copyPicked = null;
+  S.picker.selectedRecipe = null; S.picker.recipeMult = 1;
   render();
   if (tab === 'search') {
     // autofocus doesn't fire on innerHTML-injected markup, and tapping
@@ -2878,6 +2884,24 @@ window.confirmOff = confirmOff;
 
 function renderPickerLibrary() {
   const p = S.picker;
+
+  if (p.selectedRecipe) {
+    const r = p.selectedRecipe;
+    return `
+    <button class="btn btn-outline btn-sm mb2" onclick="backToRecipeList()">${iconChevronL} back to list</button>
+    <div class="t15 w600 mb1">${esc(r.name)}</div>
+    <div class="t12 faint mb2">${r.ingredients.length} ingredient${r.ingredients.length === 1 ? '' : 's'} · ${r.ingredients.map((g) => esc(g.name)).join(', ')}</div>
+    <label class="field mb3"><span>Servings (1 = ${esc(r.servingLabel)})</span><input class="input" type="number" id="recipe-mult" value="${r === p.selectedRecipe ? p.recipeMult : 1}" step="0.25" min="0.25" oninput="updateRecipePreview()"></label>
+    ${macroTiles('recipe-prev')}
+    <div class="sheet-actions">
+      <button class="btn btn-primary btn-block" onclick="confirmRecipe()">Add to log</button>
+      <div class="row g2 mt2">
+        <button class="btn btn-outline flex1" onclick="renameRecipe('${jsId(r.id)}')">Rename</button>
+        <button class="btn btn-outline flex1" onclick="deleteRecipe('${jsId(r.id)}')">Delete</button>
+      </div>
+    </div>`;
+  }
+
   if (p.selectedSaved) {
     const f = p.selectedSaved, m = p.multiplier;
     return `
@@ -2898,13 +2922,26 @@ function renderPickerLibrary() {
           <div class="t12 faint mono">${f.calories} kcal per ${esc(f.servingLabel)}</div>
         </div>
       </button>`).join('');
+  const recipeRows = S.recipes.map((r) => `
+    <button class="food-row" data-name="${esc(String(r.name || '').toLowerCase())}" onclick="selectRecipe('${jsId(r.id)}')">
+      <span class="row-emoji">${iconChefHat}</span>
+      <div class="flex1" style="min-width:0;">
+        <div class="t14 w500" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.name)}</div>
+        <div class="t12 faint mono">${round(r.calories)} kcal · ${r.ingredients.length} ingredient${r.ingredients.length === 1 ? '' : 's'}</div>
+      </div>
+    </button>`).join('');
+
   return `
   <input class="input sans mb3" id="lib-query" placeholder="Search your saved foods..." oninput="filterLibraryList()">
+  ${S.recipes.length ? `<div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">RECIPES</div>
+  <div id="recipe-list">${recipeRows}</div>
+  <div class="mb3"></div>
+  <div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">MY FOODS</div>` : ''}
   <div id="lib-list">${rows}</div>`;
 }
 function filterLibraryList() {
   const q = document.getElementById('lib-query').value.trim().toLowerCase();
-  document.querySelectorAll('#lib-list .food-row').forEach((el) => {
+  document.querySelectorAll('#lib-list .food-row, #recipe-list .food-row').forEach((el) => {
     el.style.display = el.getAttribute('data-name').includes(q) ? '' : 'none';
   });
 }
@@ -2934,6 +2971,136 @@ function confirmSaved() {
   closePicker(); toast('Added to log');
 }
 window.confirmSaved = confirmSaved;
+
+// ---------------------------------------------------------------------
+// Recipes
+//
+// A recipe is a saved combination of foods that logs as ONE entry. The entry it
+// produces is the same flat shape confirmSaved() writes, so nothing that reads
+// the log needs to know recipes exist — and deleting a recipe therefore cannot
+// disturb entries already logged from it.
+//
+// Totals are stored, but always recomputed from the ingredients when built or
+// imported, so the parts can never disagree with the sum.
+// ---------------------------------------------------------------------
+
+function recipeTotals(ingredients) {
+  const totals = {};
+  RECIPE_MACROS.forEach((k) => {
+    totals[k] = round(ingredients.reduce((sum, g) => sum + (Number(g[k]) || 0), 0), k === 'calories' ? 0 : 1);
+  });
+  return totals;
+}
+
+// A log entry becomes a recipe ingredient. Keeps the per100/amount/unit that
+// produced it so CLA-6's editor can rescale it later.
+function entryToIngredient(entry) {
+  const g = {
+    name: entry.name,
+    amount: num(entry.amount, 0),
+    unit: ['g', 'oz', 'lb', 'serving'].includes(entry.unit) ? entry.unit : 'g',
+    servingGrams: entry.servingGrams == null ? null : num(entry.servingGrams, 0),
+    label: String(entry.label || ''),
+  };
+  RECIPE_MACROS.forEach((k) => { g[k] = num(entry[k], 0); });
+  if (entry.per100) {
+    g.per100 = {};
+    RECIPE_MACROS.forEach((k) => { g.per100[k] = num(entry.per100[k], 0); });
+  }
+  return g;
+}
+
+function saveRecipe(name, ingredients) {
+  const recipe = Object.assign({
+    id: `recipe-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: String(name).trim().slice(0, 120),
+    servingLabel: '1 serving',
+    ingredients,
+    createdAt: todayKey(),
+  }, recipeTotals(ingredients));
+  S.recipes = [recipe].concat(S.recipes);
+  persistRecipes();
+  return recipe;
+}
+
+function findRecipe(id) {
+  return S.recipes.find((r) => jsId(r.id) === id || r.id === id) || null;
+}
+
+function recipePreview(recipe, mult) {
+  const m = {};
+  RECIPE_MACROS.forEach((k) => { m[k] = round((Number(recipe[k]) || 0) * mult, k === 'calories' ? 0 : 1); });
+  return m;
+}
+
+function selectRecipe(id) {
+  const recipe = findRecipe(id);
+  if (!recipe) return;
+  S.picker.selectedRecipe = recipe;
+  S.picker.recipeMult = 1;
+  render();
+  setTimeout(() => updateRecipePreview(), 0);
+}
+window.selectRecipe = selectRecipe;
+
+function backToRecipeList() { S.picker.selectedRecipe = null; render(); }
+window.backToRecipeList = backToRecipeList;
+
+function updateRecipePreview() {
+  const el = document.getElementById('recipe-mult');
+  if (!el) return;
+  S.picker.recipeMult = Number(el.value) || 0;
+  fillMacroTiles('recipe-prev', recipePreview(S.picker.selectedRecipe, S.picker.recipeMult));
+}
+window.updateRecipePreview = updateRecipePreview;
+
+function confirmRecipe() {
+  const p = S.picker;
+  const recipe = p.selectedRecipe;
+  const mult = Number(p.recipeMult) || 0;
+  if (!recipe || mult <= 0) return;
+  const macros = recipePreview(recipe, mult);
+  addFoodEntry(p.forDate, Object.assign({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    at: defaultEntryAt(p.forDate, p.at),
+    name: recipe.name,
+    label: mult === 1 ? recipe.servingLabel : `${mult}× ${recipe.servingLabel}`,
+  }, macros));
+  closePicker();
+  toast('Added to log');
+}
+window.confirmRecipe = confirmRecipe;
+
+function renameRecipe(id) {
+  const recipe = findRecipe(id);
+  if (!recipe) return;
+  const next = prompt('Recipe name', recipe.name);
+  if (next == null) return;
+  const name = String(next).trim().slice(0, 120);
+  if (!name) { toast('A recipe needs a name'); return; }
+  S.recipes = S.recipes.map((r) => (r.id === recipe.id ? Object.assign({}, r, { name }) : r));
+  if (S.picker && S.picker.selectedRecipe && S.picker.selectedRecipe.id === recipe.id) {
+    S.picker.selectedRecipe = findRecipe(recipe.id);
+  }
+  persistRecipes();
+  render();
+  toast('Recipe renamed');
+}
+window.renameRecipe = renameRecipe;
+
+function deleteRecipe(id) {
+  const recipe = findRecipe(id);
+  if (!recipe) return;
+  // Entries already logged from this recipe are plain entries and are left
+  // alone deliberately — deleting the shortcut must not rewrite history.
+  if (!confirm(`Delete the recipe "${recipe.name}"?\n\nFood already logged from it stays in your log.`)) return;
+  S.recipes = S.recipes.filter((r) => r.id !== recipe.id);
+  if (S.picker) S.picker.selectedRecipe = null;
+  persistRecipes();
+  render();
+  toast('Recipe deleted');
+}
+window.deleteRecipe = deleteRecipe;
 
 // ---------------------------------------------------------------------
 // Copy tab
@@ -3047,6 +3214,7 @@ function renderPickerCopy() {
   ${rows}
   <div class="sheet-actions">
     <button class="btn btn-primary btn-block" onclick="confirmCopyDay()" ${count ? '' : 'disabled'}>Copy ${count} food${count === 1 ? '' : 's'}</button>
+    <button class="btn btn-outline btn-block mt2" onclick="saveTickedAsRecipe()" ${count ? '' : 'disabled'}>Save ${count === 1 ? 'it' : `these ${count}`} as a recipe</button>
   </div>`;
 }
 
@@ -3092,6 +3260,26 @@ function toggleAllCopyEntries() {
   render();
 }
 window.toggleAllCopyEntries = toggleAllCopyEntries;
+
+// The ticks already express "these foods, together" — the same selection that
+// drives a copy is exactly what a recipe is, so it is offered here rather than
+// making the user rebuild the list somewhere else.
+function saveTickedAsRecipe() {
+  const p = S.picker;
+  const picked = copyPickedMap();
+  const entries = (getDayLog(p.copyDay).foods || []).filter((f) => picked[f.id] && copyableEntry(f));
+  if (!entries.length) return;
+
+  const suggested = entries.length === 1 ? entries[0].name : '';
+  const name = prompt(`Name this recipe (${entries.length} ingredient${entries.length === 1 ? '' : 's'})`, suggested);
+  if (name == null) return;
+  if (!String(name).trim()) { toast('A recipe needs a name'); return; }
+
+  const recipe = saveRecipe(name, entries.map(entryToIngredient));
+  closePicker();
+  toast(`Saved “${recipe.name}” · ${round(recipe.calories)} kcal`);
+}
+window.saveTickedAsRecipe = saveTickedAsRecipe;
 
 function confirmCopyDay() {
   const p = S.picker;
@@ -3674,7 +3862,7 @@ function renderMore() {
   `;
 }
 function exportData() {
-  const payload = { profile: S.profile, targets: S.targets, logs: S.logs, savedFoods: S.savedFoods, exportedAt: new Date().toISOString() };
+  const payload = { profile: S.profile, targets: S.targets, logs: S.logs, savedFoods: S.savedFoods, recipes: S.recipes, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3815,6 +4003,51 @@ function cleanSavedFoods(raw) {
     return o;
   });
 }
+// A recipe is a name, the ingredients it was built from, and the per-serving
+// macros those ingredients sum to. Imported files are untrusted, so validate
+// here rather than escaping at render: anything without a usable name or a
+// non-empty ingredient list is dropped rather than shown as a broken row.
+const RECIPE_MACROS = ['calories', 'protein', 'carbs', 'fat', 'fiber'];
+
+function cleanRecipes(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((r) => r && typeof r === 'object').map((r, i) => {
+    const ingredients = (Array.isArray(r.ingredients) ? r.ingredients : [])
+      .filter((g) => g && typeof g === 'object')
+      .map((g) => {
+        const o = {
+          name: String(g.name == null ? 'Unnamed food' : g.name).slice(0, 200),
+          amount: num(g.amount, 0),
+          unit: ['g', 'oz', 'lb', 'serving'].includes(g.unit) ? g.unit : 'g',
+          servingGrams: g.servingGrams == null ? null : num(g.servingGrams, 0),
+          label: String(g.label || '').slice(0, 80),
+        };
+        RECIPE_MACROS.forEach((k) => { o[k] = num(g[k], 0); });
+        const p = g.per100 && typeof g.per100 === 'object' ? g.per100 : null;
+        if (p) {
+          o.per100 = {};
+          RECIPE_MACROS.forEach((k) => { o.per100[k] = num(p[k], 0); });
+        }
+        return o;
+      });
+    if (!ingredients.length) return null;
+    const o = {
+      id: safeId(r.id, `recipe-${i}`),
+      name: String(r.name == null ? '' : r.name).trim().slice(0, 120),
+      servingLabel: String(r.servingLabel || '1 serving').slice(0, 80),
+      ingredients,
+      createdAt: DATE_KEY_RE.test(String(r.createdAt)) ? r.createdAt : todayKey(),
+    };
+    if (!o.name) return null;
+    // Recompute the totals from the ingredients rather than trusting the file,
+    // so a tampered or truncated export can't log macros its parts disagree with.
+    RECIPE_MACROS.forEach((k) => {
+      o[k] = round(ingredients.reduce((sum, g) => sum + (Number(g[k]) || 0), 0), k === 'calories' ? 0 : 1);
+    });
+    return o;
+  }).filter(Boolean);
+}
+
 // profile/targets carry meaningful STRING fields (sex, activityLevel,
 // startDate, target-history source) alongside the numerics. A blanket
 // numbers-only filter would silently delete them and break the restored
@@ -3943,6 +4176,15 @@ function importData(e) {
         S.savedFoods = updated.concat(
           incomingSaved.filter((f) => !seenKeys.has(foodKey(f.foodId || f.name))),
         );
+        // Recipes merge by name rather than id: a partial file's ids are its
+        // own, so matching on id would duplicate a recipe you already have.
+        const incomingRecipes = cleanRecipes(data.recipes);
+        if (incomingRecipes.length) {
+          const haveNames = new Set(S.recipes.map((r) => r.name.toLowerCase()));
+          const addedRecipes = incomingRecipes.filter((r) => !haveNames.has(r.name.toLowerCase()));
+          if (addedRecipes.length) { S.recipes = S.recipes.concat(addedRecipes); persistRecipes(); }
+        }
+
         persistLogs(); persistSavedFoods();
         render();
         toast(`Merged ${addedFoods} entries across ${addedDays || Object.keys(incoming).length} days`);
@@ -3967,7 +4209,10 @@ function importData(e) {
       }
       S.profile = profile; S.targets = targets;
       S.logs = logs; S.savedFoods = cleanSavedFoods(data.savedFoods);
-      persistProfile(); persistTargets(); persistLogs(); persistSavedFoods();
+      // A backup taken before recipes existed has no field here, which cleans
+      // to an empty list rather than throwing.
+      S.recipes = cleanRecipes(data.recipes);
+      persistProfile(); persistTargets(); persistLogs(); persistSavedFoods(); persistRecipes();
       render(); toast('Backup restored');
     } catch (err) { toast('Could not read that file — is it a Tare backup?'); }
   };
@@ -3976,10 +4221,10 @@ function importData(e) {
 window.importData = importData;
 async function resetAllData() {
   if (!confirm('Erase ALL Tare data for this account? This cannot be undone.')) return;
-  const empty = { profile: null, targets: null, logs: {}, savedFoods: [] };
+  const empty = { profile: null, targets: null, logs: {}, savedFoods: [], recipes: [] };
   const uid = currentUid;
   const shardMonths = new Set(knownShardMonths);
-  S.profile = null; S.targets = null; S.logs = {}; S.savedFoods = [];
+  S.profile = null; S.targets = null; S.logs = {}; S.savedFoods = []; S.recipes = [];
   S.activeTab = 'dashboard'; S.currentDate = todayKey();
   if (uid) {
     try {
