@@ -449,7 +449,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 43;
+const BUILD = 44;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -2354,6 +2354,7 @@ function openPicker(dateKey, atMs) {
     forDate: dateKey, at: atMs || null, tab: 'recent', query: '', results: [], status: 'idle',
     selectedOff: null, selectedRecent: null, amount: 100, unit: 'g',
     selectedSaved: null, multiplier: 1,
+    copyDay: null, copyPicked: null,
   };
   render();
 }
@@ -2363,6 +2364,7 @@ window.closePicker = closePicker;
 function setPickerTab(tab) {
   S.picker.tab = tab;
   S.picker.selectedOff = null; S.picker.selectedSaved = null; S.picker.selectedRecent = null;
+  S.picker.copyDay = null; S.picker.copyPicked = null;
   render();
   if (tab === 'search') {
     // autofocus doesn't fire on innerHTML-injected markup, and tapping
@@ -2379,6 +2381,7 @@ function renderPicker() {
   if (p.tab === 'recent') body = renderPickerRecent();
   else if (p.tab === 'search') body = renderPickerSearch();
   else if (p.tab === 'library') body = renderPickerLibrary();
+  else if (p.tab === 'copy') body = renderPickerCopy();
   else body = renderPickerCustom();
 
   // Editing targets one specific entry, so the source tabs are meaningless.
@@ -2391,7 +2394,7 @@ function renderPicker() {
           <button class="icon-btn" aria-label="Close" onclick="closePicker()">${iconClose}</button>
         </div>
       </div>
-      ${p.editing ? '' : `<div class="pill-toggle mb3">${tabBtn('recent', 'Recent')}${tabBtn('search', 'Search')}${tabBtn('library', 'My Foods')}${tabBtn('custom', 'Custom')}</div>`}
+      ${p.editing ? '' : `<div class="pill-toggle mb3">${tabBtn('recent', 'Recent')}${tabBtn('search', 'Search')}${tabBtn('library', 'My Foods')}${tabBtn('custom', 'Custom')}${tabBtn('copy', 'Copy')}</div>`}
       ${body}
     </div>
   </div>`;
@@ -2931,6 +2934,198 @@ function confirmSaved() {
   closePicker(); toast('Added to log');
 }
 window.confirmSaved = confirmSaved;
+
+// ---------------------------------------------------------------------
+// Copy tab
+//
+// Re-logging the same breakfast by hand every morning is the single most
+// repeated action in the app. This copies entries forward from a day already
+// logged, into the same hour they occupied there.
+//
+// A copied entry is a structural clone with a fresh id and timestamp, not a
+// rebuild through buildEntry: cloning carries per100/amount/unit/servingGrams
+// and the stored macros across untouched, so a copy is re-loggable and
+// rescalable exactly like its source, with no chance of recomputed macros
+// drifting from the original.
+// ---------------------------------------------------------------------
+
+// Legacy entries predating per100 cannot be re-logged; entryToFood is the
+// existing test for that, so reuse it rather than inventing a second rule.
+function copyableEntry(entry) {
+  return entryToFood(entry) !== null;
+}
+
+// Days that hold food, newest first, excluding the day being copied into.
+function copySourceDays() {
+  const forDate = S.picker.forDate;
+  return Object.keys(S.logs)
+    .filter((key) => key !== forDate && ((S.logs[key] && S.logs[key].foods) || []).length > 0)
+    .sort()
+    .reverse();
+}
+
+function copyEntriesByHour(dateKey) {
+  const foods = (getDayLog(dateKey).foods || []).slice().sort((a, b) => entryTime(a) - entryTime(b));
+  const byHour = new Map();
+  foods.forEach((f) => {
+    const t = entryTime(f);
+    // Untimed legacy entries group under midday, matching defaultEntryAt.
+    const h = t > 0 ? new Date(t).getHours() : 12;
+    if (!byHour.has(h)) byHour.set(h, []);
+    byHour.get(h).push(f);
+  });
+  return [...byHour.entries()].sort((a, b) => a[0] - b[0]);
+}
+
+function copyPickedMap() {
+  const p = S.picker;
+  if (p.copyPicked) return p.copyPicked;
+  // Everything copyable starts ticked: copying the whole day is the common case.
+  const picked = {};
+  (getDayLog(p.copyDay).foods || []).forEach((f) => {
+    if (copyableEntry(f)) picked[f.id] = true;
+  });
+  p.copyPicked = picked;
+  return picked;
+}
+
+function copyPickedCount() {
+  const picked = copyPickedMap();
+  return Object.keys(picked).filter((id) => picked[id]).length;
+}
+
+function renderPickerCopy() {
+  const p = S.picker;
+
+  if (!p.copyDay) {
+    const days = copySourceDays();
+    if (!days.length) {
+      return `<div class="faint t13" style="padding:14px 0;">No other day has food logged yet. Once you have logged a day, you can copy it forward from here.</div>`;
+    }
+    return `
+    <div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">COPY FROM</div>
+    ${days.map((key) => {
+      const totals = dayTotals(getDayLog(key));
+      const count = (getDayLog(key).foods || []).length;
+      return `<button class="food-row" onclick="selectCopyDay('${jsId(key)}')">
+        <div class="flex1" style="min-width:0;">
+          <div class="t14 w500">${esc(copyDayLabel(key))}</div>
+          <div class="t12 faint mono">${round(totals.calories)} kcal · ${count} item${count === 1 ? '' : 's'}</div>
+        </div>
+        ${iconChevronR}
+      </button>`;
+    }).join('')}`;
+  }
+
+  const picked = copyPickedMap();
+  const groups = copyEntriesByHour(p.copyDay);
+  const count = copyPickedCount();
+
+  const rows = groups.map(([hour, items]) => `
+    <div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">${esc(hourLabel(hour).toUpperCase())}</div>
+    ${items.map((f) => {
+      const ok = copyableEntry(f);
+      const on = ok && !!picked[f.id];
+      return `<button class="food-row" ${ok ? `onclick="toggleCopyEntry('${jsId(f.id)}')"` : 'disabled aria-disabled="true"'}>
+        <span class="row-emoji mono" aria-hidden="true">${ok ? (on ? '✓' : '○') : '—'}</span>
+        <div class="flex1" style="min-width:0;">
+          <div class="t14 w500 ${ok ? '' : 'faint'}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(f.name)}</div>
+          <div class="t12 faint mono">${ok
+            ? `${round(f.calories)} kcal · ${esc(f.label || '')}`
+            : 'saved before serving sizes were tracked — cannot be copied'}</div>
+        </div>
+      </button>`;
+    }).join('')}
+    <div class="mb3"></div>`).join('');
+
+  return `
+  <button class="btn btn-outline btn-sm mb2" onclick="backToCopyDays()">${iconChevronL} back</button>
+  <div class="row between mb2">
+    <div class="t15 w600">${esc(copyDayLabel(p.copyDay))}</div>
+    <button class="btn btn-outline btn-sm" onclick="toggleAllCopyEntries()">${count ? 'Clear all' : 'Select all'}</button>
+  </div>
+  ${rows}
+  <div class="sheet-actions">
+    <button class="btn btn-primary btn-block" onclick="confirmCopyDay()" ${count ? '' : 'disabled'}>Copy ${count} food${count === 1 ? '' : 's'}</button>
+  </div>`;
+}
+
+function copyDayLabel(dateKey) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const suffix = dateKey === addDays(todayKey(), -1) ? ' · yesterday' : '';
+  return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + suffix;
+}
+
+function selectCopyDay(dateKey) {
+  S.picker.copyDay = dateKey;
+  S.picker.copyPicked = null;
+  render();
+}
+window.selectCopyDay = selectCopyDay;
+
+function backToCopyDays() {
+  S.picker.copyDay = null;
+  S.picker.copyPicked = null;
+  render();
+}
+window.backToCopyDays = backToCopyDays;
+
+function toggleCopyEntry(id) {
+  const picked = copyPickedMap();
+  // The handler receives jsId(f.id); a legacy id containing a character jsId
+  // strips would never match its raw value, so compare on the sanitised form.
+  const entry = (getDayLog(S.picker.copyDay).foods || []).find((f) => jsId(f.id) === id || f.id === id);
+  if (!entry) return;
+  picked[entry.id] = !picked[entry.id];
+  render();
+}
+window.toggleCopyEntry = toggleCopyEntry;
+
+function toggleAllCopyEntries() {
+  const on = copyPickedCount() === 0;
+  const picked = {};
+  (getDayLog(S.picker.copyDay).foods || []).forEach((f) => {
+    if (copyableEntry(f)) picked[f.id] = on;
+  });
+  S.picker.copyPicked = picked;
+  render();
+}
+window.toggleAllCopyEntries = toggleAllCopyEntries;
+
+function confirmCopyDay() {
+  const p = S.picker;
+  const forDate = p.forDate;
+  const picked = copyPickedMap();
+  const source = (getDayLog(p.copyDay).foods || []).filter((f) => picked[f.id] && copyableEntry(f));
+  if (!source.length) return;
+
+  const copies = source.map((f, i) => {
+    const t = entryTime(f);
+    const hour = t > 0 ? new Date(t).getHours() : 12;
+    return Object.assign({}, f, {
+      // Date.now() alone collides when several entries are cloned in one tick.
+      id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+      at: slotTimestamp(forDate, hour),
+    });
+  });
+  const newIds = new Set(copies.map((c) => c.id));
+
+  // One write for the whole batch. Appending through addFoodEntry per entry
+  // would rewrite the month shard once per food.
+  const before = getDayLog(forDate);
+  setDayLog(forDate, Object.assign({}, before, { foods: (before.foods || []).concat(copies) }));
+  closePicker();
+  toast(`Copied ${copies.length} food${copies.length === 1 ? '' : 's'}`, { label: 'Undo', onClick: () => {
+    const current = getDayLog(forDate);
+    setDayLog(forDate, Object.assign({}, current, {
+      foods: (current.foods || []).filter((f) => !newIds.has(f.id)),
+    }));
+    render();
+    toast('Copy undone');
+  } });
+}
+window.confirmCopyDay = confirmCopyDay;
 
 function renderPickerCustom() {
   return `
