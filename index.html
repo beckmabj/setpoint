@@ -165,17 +165,6 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .day-cell button.day-btn { background: none; border: none; padding: 0; cursor: pointer; }
 
 /* nutrition strip (dashboard) */
-/* Weekly nutrition: seven day COLUMNS, each holding four tracks (cal, protein,
-   fat, carbs). Drawing a track behind every value — rather than a floating
-   dash — gives the card real height, so it fills the carousel instead of
-   leaving dead space, and makes each day readable as a proportion. */
-.nstrip { display: flex; gap: 4px; align-items: stretch; }
-.nstrip-day { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 4px 3px 3px; border-radius: 9px; border: 1.5px solid transparent; background: transparent; appearance: none; -webkit-appearance: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.nstrip-day.is-today { border-color: var(--ink); }
-.nstrip-cell { flex: 1; min-height: 26px; background: var(--tan-soft); border-radius: 4px; position: relative; overflow: hidden; }
-.nstrip-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 4px; transition: height 200ms ease; }
-.nstrip-daylabel { text-align: center; font-size: 11px; color: var(--ink-fainter); padding-top: 2px; }
-.nstrip-day.is-today .nstrip-daylabel { color: var(--ink); font-weight: 700; }
 
 /* streak grid */
 .streak-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
@@ -215,6 +204,21 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .gauge-left { left: 0; } .gauge-right { right: 0; }
 .gauge-side-v { font-size: 20px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
 .gauge-side-l { font-size: 12.5px; color: var(--ink-faint); margin-top: 2px; }
+
+.devstrip { display: flex; gap: 6px; align-items: stretch; }
+.devday { flex: 1; min-width: 0; background: transparent; border: none; padding: 4px 2px 0; border-radius: 9px;
+  cursor: pointer; font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+.devday.is-today { box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.devhalf { height: 40px; display: flex; }
+.devhalf-up { align-items: flex-end; }
+.devaxis { height: 1px; background: var(--line-strong); }
+.devaxis.is-empty { background: var(--line); }
+.devbar { width: 100%; }
+.devbar-up { background: var(--brick); border-radius: 4px 4px 0 0; }
+.devbar-down { background: var(--carbs); border-radius: 0 0 4px 4px; }
+.devkey { display: inline-block; width: 7px; height: 7px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+.devlabel { text-align: center; font-size: 11px; color: var(--ink-fainter); padding: 6px 0 4px; }
+.devday.is-today .devlabel { color: var(--ink); font-weight: 700; }
 
 .macro-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 10px; }
 .macro-col { text-align: center; }
@@ -1648,24 +1652,33 @@ function renderDashboard() {
     { key: 'carbs', color: 'var(--carbs)' },
   ];
   // Column per day, four tracks per column.
+  // Deviation from target, not absolute intake. Five days that all land near
+  // target produce five near-identical bars on an absolute scale; plotted as
+  // distance from the line, the shape of the week is legible at a glance.
+  // Over runs up in brick, under runs down in green, and a missed day is a
+  // hairline on the axis rather than a zero-height bar pretending to be data.
+  const DEV_FULL = 400;   // kcal of deviation that fills the half-height
+  const DEV_H = 40;       // px per half
   const stripDays = weekDays.map((d, i) => {
     const dayLog = getDayLog(d);
     const logged = (dayLog.foods || []).length > 0;
-    const totals = dayTotals(dayLog);
     const isToday = d === today;
-    const cells = macroKeys.map((mk) => {
-      const target = t[mk.key] || 1;
-      const val = totals[mk.key];
-      // A day with nothing logged is UNKNOWN, not complete: in "remaining"
-      // mode (target - 0) / target = 1 would otherwise fill every future day.
-      const frac = !logged ? 0
-        : (S.dashMode === 'remaining' ? clamp((target - val) / target, 0, 1) : clamp(val / target, 0, 1));
-      const pct = round(frac * 100, 1);
-      const title = logged ? `${formatShort(d)} · ${round(val)}${mk.key === 'calories' ? '' : 'g'} of ${target}` : `${formatShort(d)} · nothing logged`;
-      return `<div class="nstrip-cell" title="${esc(title)}">${pct > 0 ? `<div class="nstrip-fill" style="height:${pct}%; background:${mk.color};"></div>` : ''}</div>`;
-    }).join('');
-    return `<button class="nstrip-day ${isToday ? 'is-today' : ''}" onclick="jumpToDayFromDash('${d}')">
-      ${cells}<div class="nstrip-daylabel">${dayLetters[i]}</div>
+    const val = round(dayTotals(dayLog).calories);
+    const diff = val - (t.calories || 0);
+    const h = Math.min(DEV_H, (Math.abs(diff) / DEV_FULL) * DEV_H);
+    const over = diff > 0;
+    const title = logged
+      ? `${formatShort(d)} · ${val} kcal · ${over ? '+' : ''}${diff} vs target`
+      : `${formatShort(d)} · nothing logged`;
+    const upper = logged && over
+      ? `<div class="devbar devbar-up" style="height:${round(h, 1)}px;"></div>` : '';
+    const lower = logged && !over
+      ? `<div class="devbar devbar-down" style="height:${round(h, 1)}px;"></div>` : '';
+    return `<button class="devday ${isToday ? 'is-today' : ''}" title="${esc(title)}" onclick="jumpToDayFromDash('${d}')">
+      <div class="devhalf devhalf-up">${upper}</div>
+      <div class="devaxis ${logged ? '' : 'is-empty'}"></div>
+      <div class="devhalf devhalf-down">${lower}</div>
+      <div class="devlabel">${dayLetters[i]}</div>
     </button>`;
   }).join('');
 
@@ -1728,7 +1741,12 @@ function renderDashboard() {
       <span class="w600 t15">This week</span>
       <span class="t11 fainter mono">${weekDays.filter((d) => (getDayLog(d).foods || []).length).length} of 7 logged</span>
     </div>
-    <div class="nstrip">${stripDays}</div>
+    <div class="devstrip">${stripDays}</div>
+    <div class="row between mt2">
+      <span class="t10 fainter"><span class="devkey" style="background:var(--brick);"></span>over
+        <span class="devkey" style="background:var(--carbs); margin-left:8px;"></span>under</span>
+      <span class="t10 fainter mono">${t.calories} kcal target</span>
+    </div>
   </div>
 
   <div class="sect-h">Insights &amp; Analytics</div>
