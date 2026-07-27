@@ -449,7 +449,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 45;
+const BUILD = 46;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -1026,6 +1026,14 @@ window.onAuthReady = async function (user) {
         S.logs = sharded;
       }
     } else {
+      // Clear recipes explicitly. Switching from one account straight to
+      // another, with no signed-out event in between, would otherwise leave the
+      // previous account's recipes in memory, render them here, and persist them
+      // into this account on the next write. There is no local recipes key to
+      // recover from — recipes postdate the pre-Firebase storage — so empty is
+      // the correct starting point.
+      S.recipes = [];
+
       // Brand new account — check for pre-existing local data from before
       // Firebase was added, and offer it a home instead of losing it.
       const localProfile = readKey('profile');
