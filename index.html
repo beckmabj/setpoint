@@ -291,7 +291,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
    scroll container, so sticky resolves against it; the negative side margins and
    matching padding let the opaque backing span the sheet's own padding, or rows
    would show through at the edges as they pass beneath. */
-.picker-dock { position: sticky; top: 0; z-index: 3; background: var(--paper); margin: 0 -16px 12px; padding: 2px 16px 10px; }
+.picker-dock { position: sticky; top: 0; z-index: 3; background: var(--paper); margin: 0 calc(-16px - env(safe-area-inset-right)) 12px calc(-16px - env(safe-area-inset-left)); padding: 2px calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left)); }
 .tl { position: relative; }
 .tl-hour { position: relative; padding-left: 46px; margin-bottom: 4px; }
 .tl-hour::before { content: ''; position: absolute; left: 21px; top: 0; bottom: -4px; width: 1px; background: var(--line); }
@@ -461,7 +461,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 47;
+const BUILD = 48;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -2176,6 +2176,7 @@ function renderMealTimeline(cd, dayLog) {
 function openPickerSearch(dateKey) {
   openPicker(dateKey);
   setPickerTab('search');
+  focusPickerQuery();
 }
 window.openPickerSearch = openPickerSearch;
 
@@ -2392,13 +2393,17 @@ function setPickerTab(tab) {
   S.picker.copyDay = null; S.picker.copyPicked = null;
   S.picker.selectedRecipe = null; S.picker.recipeMult = 1;
   render();
-  if (tab === 'search') {
-    // autofocus doesn't fire on innerHTML-injected markup, and tapping
-    // "Search" then tapping the field is two taps for one intent.
-    setTimeout(() => { const el = document.getElementById('picker-query'); if (el) el.focus(); }, 40);
-  }
 }
 window.setPickerTab = setPickerTab;
+
+// Focusing raises the keyboard, which covers the picks and recents the tab
+// exists to show. Only a caller that means "I want to type" asks for it —
+// tapping back to Search from My Foods or Copy must not.
+function focusPickerQuery() {
+  // autofocus doesn't fire on innerHTML-injected markup, and tapping the log's
+  // search bar then tapping the field is two taps for one intent.
+  setTimeout(() => { const el = document.getElementById('picker-query'); if (el) el.focus(); }, 40);
+}
 
 function renderPicker() {
   const p = S.picker;
