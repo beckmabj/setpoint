@@ -287,6 +287,11 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .daybar-fill { height: 100%; border-radius: 3px; transition: width 220ms ease; }
 
 /* Food log timeline: a continuous run of hour slots with a time rail */
+/* The search field stays put while results scroll under it. The sheet is the
+   scroll container, so sticky resolves against it; the negative side margins and
+   matching padding let the opaque backing span the sheet's own padding, or rows
+   would show through at the edges as they pass beneath. */
+.picker-dock { position: sticky; top: 0; z-index: 3; background: var(--paper); margin: 0 calc(-16px - env(safe-area-inset-right)) 12px calc(-16px - env(safe-area-inset-left)); padding: 2px calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left)); }
 .tl { position: relative; }
 .tl-hour { position: relative; padding-left: 46px; margin-bottom: 4px; }
 .tl-hour::before { content: ''; position: absolute; left: 21px; top: 0; bottom: -4px; width: 1px; background: var(--line); }
@@ -456,7 +461,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 47;
+const BUILD = 48;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -2171,6 +2176,7 @@ function renderMealTimeline(cd, dayLog) {
 function openPickerSearch(dateKey) {
   openPicker(dateKey);
   setPickerTab('search');
+  focusPickerQuery();
 }
 window.openPickerSearch = openPickerSearch;
 
@@ -2370,7 +2376,7 @@ function libraryFoods() {
 // ---------------------------------------------------------------------
 function openPicker(dateKey, atMs) {
   S.picker = {
-    forDate: dateKey, at: atMs || null, tab: 'recent', query: '', results: [], status: 'idle',
+    forDate: dateKey, at: atMs || null, tab: 'search', query: '', results: [], status: 'idle',
     selectedOff: null, selectedRecent: null, amount: 100, unit: 'g',
     selectedSaved: null, multiplier: 1,
     copyDay: null, copyPicked: null,
@@ -2387,20 +2393,23 @@ function setPickerTab(tab) {
   S.picker.copyDay = null; S.picker.copyPicked = null;
   S.picker.selectedRecipe = null; S.picker.recipeMult = 1;
   render();
-  if (tab === 'search') {
-    // autofocus doesn't fire on innerHTML-injected markup, and tapping
-    // "Search" then tapping the field is two taps for one intent.
-    setTimeout(() => { const el = document.getElementById('picker-query'); if (el) el.focus(); }, 40);
-  }
 }
 window.setPickerTab = setPickerTab;
+
+// Focusing raises the keyboard, which covers the picks and recents the tab
+// exists to show. Only a caller that means "I want to type" asks for it —
+// tapping back to Search from My Foods or Copy must not.
+function focusPickerQuery() {
+  // autofocus doesn't fire on innerHTML-injected markup, and tapping the log's
+  // search bar then tapping the field is two taps for one intent.
+  setTimeout(() => { const el = document.getElementById('picker-query'); if (el) el.focus(); }, 40);
+}
 
 function renderPicker() {
   const p = S.picker;
   const tabBtn = (key, label) => `<button class="${p.tab === key ? 'active' : ''}" onclick="setPickerTab('${key}')">${label}</button>`;
   let body = '';
-  if (p.tab === 'recent') body = renderPickerRecent();
-  else if (p.tab === 'search') body = renderPickerSearch();
+  if (p.tab === 'search') body = renderPickerSearch();
   else if (p.tab === 'library') body = renderPickerLibrary();
   else if (p.tab === 'copy') body = renderPickerCopy();
   else body = renderPickerCustom();
@@ -2415,7 +2424,7 @@ function renderPicker() {
           <button class="icon-btn" aria-label="Close" onclick="closePicker()">${iconClose}</button>
         </div>
       </div>
-      ${p.editing ? '' : `<div class="pill-toggle mb3">${tabBtn('recent', 'Recent')}${tabBtn('search', 'Search')}${tabBtn('library', 'My Foods')}${tabBtn('custom', 'Custom')}${tabBtn('copy', 'Copy')}</div>`}
+      ${p.editing ? '' : `<div class="pill-toggle mb3">${tabBtn('search', 'Search')}${tabBtn('library', 'My Foods')}${tabBtn('custom', 'Custom')}${tabBtn('copy', 'Copy')}</div>`}
       ${body}
     </div>
   </div>`;
@@ -2423,6 +2432,9 @@ function renderPicker() {
 
 function renderPickerSearch() {
   const p = S.picker;
+  // A pick, favorite or recent was chosen: that amount step lives in
+  // renderPickerRecent and is unchanged, it just opens from here now.
+  if (p.selectedRecent) return renderPickerRecent();
   if (p.selectedOff) {
     const f = p.selectedOff;
     return `
@@ -2435,12 +2447,20 @@ function renderPickerSearch() {
     ${amountControls('off')}
     <div class="sheet-actions"><button class="btn btn-primary btn-block" onclick="confirmOff()">Add to log</button></div>`;
   }
+  // One surface: the field is always here, and the foods you actually eat sit
+  // under it until a search replaces them. Nothing is behind a second tab.
+  const searching = Boolean(p.query) || p.results.length > 0 || p.status !== 'idle';
+
   return `
-  <form onsubmit="doPickerSearch(event)" class="row g2 mb3">
-    <input class="input sans flex1" id="picker-query" placeholder="e.g. greek yogurt, chicken breast..." value="${esc(p.query)}"
-           autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
-    <button type="submit" class="btn btn-primary" style="padding:0 14px;">${iconSearch}</button>
-  </form>
+  <div class="picker-dock">
+    <form onsubmit="doPickerSearch(event)" class="row g2">
+      <input class="input sans flex1" id="picker-query" placeholder="e.g. greek yogurt, chicken breast..." value="${esc(p.query)}"
+             autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search"
+             oninput="onPickerQueryInput()">
+      <button type="submit" class="btn btn-primary" style="padding:0 14px;">${iconSearch}</button>
+    </form>
+  </div>
+  ${!searching ? renderPickerRecent() : ''}
   ${p.status === 'loading' ? `<div class="faint t13" style="padding:20px 0; text-align:center;">Searching…</div>` : ''}
   ${p.status === 'error' ? `<div class="t13" style="color:var(--brick); padding:8px 0;">Couldn't reach the food database. Check your connection, or use "Custom".</div>` : ''}
   ${p.status === 'ratelimit' ? `<div class="t13" style="color:var(--brick); padding:8px 0;">Search limit reached for now. Wait a few minutes, or add it under "Custom".</div>` : ''}
@@ -2633,7 +2653,9 @@ function editEntry(dateKey, entryId) {
     return;
   }
   S.picker = {
-    forDate: dateKey, at: entryTime(entry) || null, tab: 'recent', query: '', results: [], status: 'idle',
+    // 'search' is the tab that now owns the selected-food amount step; editing
+    // hides the tab bar anyway, so this only decides which body renders.
+    forDate: dateKey, at: entryTime(entry) || null, tab: 'search', query: '', results: [], status: 'idle',
     selectedOff: null, selectedRecent: food, selectedSaved: null, multiplier: 1,
     amount: entry.amount != null ? entry.amount : 100,
     unit: unitsFor(food).includes(entry.unit) ? entry.unit : 'g',
@@ -2890,6 +2912,22 @@ function selectOffResult(i) {
 window.selectOffResult = selectOffResult;
 function backToOffResults() { S.picker.selectedOff = null; render(); }
 window.backToOffResults = backToOffResults;
+
+// Emptying the field brings your usual foods back. Only re-renders on the
+// transition to empty — re-rendering on every keystroke would drop focus and
+// close the keyboard mid-word.
+function onPickerQueryInput() {
+  const el = document.getElementById('picker-query');
+  if (!el || el.value.trim() || !S.picker) return;
+  const p = S.picker;
+  if (!p.query && !p.results.length && p.status === 'idle') return;
+  p.query = ''; p.results = []; p.status = 'idle'; p.selectedOff = null;
+  p.seq = (p.seq || 0) + 1; // abandon an in-flight search
+  render();
+  const next = document.getElementById('picker-query');
+  if (next) next.focus();
+}
+window.onPickerQueryInput = onPickerQueryInput;
 function confirmOff() {
   const p = S.picker;
   addFoodEntry(p.forDate, buildEntry(p.selectedOff, p.amount, p.unit, defaultEntryAt(p.forDate, p.at)));
