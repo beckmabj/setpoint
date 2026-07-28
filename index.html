@@ -292,12 +292,22 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 .tl-hour::before { content: ''; position: absolute; left: 21px; top: 0; bottom: -4px; width: 1px; background: var(--line); }
 .tl-hour:last-child::before { bottom: 50%; }
 .tl-hour-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px -46px; }
-.tl-hour-chip { font-size: 13px; font-weight: 700; color: var(--ink-faint); background: var(--tan-soft); border-radius: 999px; padding: 5px 12px; min-width: 58px; text-align: center; }
+/* Fixed width, not min-width. The chip is the first item in a flex row, so a
+   wider label pushed the + that follows it and the column zigzagged: "5 AM"
+   measured 58px against 63px for "10 AM", "11 AM" and "12 PM". 66px clears the
+   widest with slack; flex: 0 0 auto stops the row shrinking it back. */
+.tl-hour-chip { font-size: 13px; font-weight: 700; color: var(--ink-faint); background: var(--tan-soft); border-radius: 999px; padding: 5px 12px; width: 66px; flex: 0 0 auto; text-align: center; }
+/* "Untimed" is wider than an hour label and heads a block with no +, so it has
+   no column to line up with and is left to size itself. */
+.tl-hour-chip--auto { width: auto; }
 .tl-hour.is-empty .tl-hour-chip { background: transparent; color: var(--ink-fainter); }
 .tl-hour.is-empty .tl-hour-head { margin-top: 2px; margin-bottom: 2px; }
 .tl-hour.is-now .tl-hour-chip { background: var(--teal-soft); color: var(--teal-deep); font-weight: 700; }
 .tl-hour-tot { margin-left: auto; font-size: 11.5px; color: var(--ink-faint); }
 .tl-add { width: 22px; height: 22px; border-radius: 999px; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-fainter); display: inline-flex; align-items: center; justify-content: center; padding: 0; position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+/* The visible circle stays 22px; the hit area is extended to 44px so the target
+   meets the minimum without changing the timeline's spacing. */
+.tl-add::after { content: ''; position: absolute; inset: -11px; }
 .tl-add svg { width: 12px; height: 12px; }
 .tl-add::after { content: ''; position: absolute; inset: -11px; }
 .tl-add:hover { color: var(--teal); border-color: var(--teal); }
@@ -2146,7 +2156,7 @@ function renderMealTimeline(cd, dayLog) {
     const slot = h < 0 ? '' : `<button class="tl-add" aria-label="Add food at ${label}" onclick="openPicker('${cd}', ${slotTimestamp(cd, Math.max(0, h))})">${iconPlus}</button>`;
     return `<div class="tl-hour ${items && items.length ? '' : 'is-empty'} ${isToday && h === nowH ? 'is-now' : ''}">
       <div class="tl-hour-head">
-        <span class="tl-hour-chip mono">${label}</span>
+        <span class="tl-hour-chip mono${h < 0 ? ' tl-hour-chip--auto' : ''}">${label}</span>
         ${slot}
         ${items && items.length ? `<span class="tl-hour-tot mono">${round(tot.calories)} cal · ${round(tot.protein)}P ${round(tot.fat)}F ${round(tot.carbs)}C</span>` : ''}
       </div>
