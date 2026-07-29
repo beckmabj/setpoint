@@ -470,7 +470,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 51;
+const BUILD = 52;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -580,6 +580,36 @@ function unitToGrams(amount, unit, servingGrams) {
   if (unit === 'lb') return n * GRAMS_PER_LB;
   if (unit === 'serving') return n * (Number(servingGrams) || 0);
   return n; // grams
+}
+
+// A fat-fingered amount does the same damage as a fat-fingered weight: a minus
+// sign puts negative macros into the day's totals, and an extra digit overruns
+// the dashboard's numbers. The cap is expressed in grams so it means the same
+// thing whichever unit was chosen; 10 kg is far past any real portion while
+// still catching a stray digit. A "serving" with no declared gram weight
+// converts to 0 and is left to the zero check rather than the cap.
+const MAX_ENTRY_GRAMS = 10000;
+
+// The range saveWeightFromInput already enforces, applied to imported weigh-ins
+// too: a kg/lb mix-up or one malformed row otherwise poisons the EMA trend and
+// the TDEE regression silently.
+const MIN_WEIGH_IN_LB = 50;
+const MAX_WEIGH_IN_LB = 1000;
+
+// Returns a message explaining what is wrong, or null when the amount is usable.
+function amountProblem(amount, unit, servingGrams) {
+  const n = Number(amount);
+  if (!isFinite(n) || n <= 0) return 'Enter an amount greater than zero';
+  const grams = unitToGrams(n, unit, servingGrams);
+  if (isFinite(grams) && grams > MAX_ENTRY_GRAMS) {
+    return `That's over ${MAX_ENTRY_GRAMS / 1000} kg of food — check the amount`;
+  }
+  return null;
+}
+
+function weighInInRange(lbs) {
+  const n = Number(lbs);
+  return isFinite(n) && n >= MIN_WEIGH_IN_LB && n <= MAX_WEIGH_IN_LB;
 }
 
 function unitsFor(food) {
@@ -2773,6 +2803,10 @@ window.backToRecents = backToRecents;
 
 function confirmRecent() {
   const p = S.picker;
+  // Checked before the edit branch too: an edit can put a bad amount on an
+  // entry just as easily as a new log can.
+  const bad = amountProblem(p.amount, p.unit, p.selectedRecent && p.selectedRecent.servingGrams);
+  if (bad) { toast(bad); return; }
   if (p.editing) { commitEntryEdit(); return; }
   addFoodEntry(p.forDate, buildEntry(p.selectedRecent, p.amount, p.unit, defaultEntryAt(p.forDate, p.at)));
   closePicker(); toast('Added to log');
@@ -3085,6 +3119,8 @@ function onPickerQueryInput() {
 window.onPickerQueryInput = onPickerQueryInput;
 function confirmOff() {
   const p = S.picker;
+  const bad = amountProblem(p.amount, p.unit, p.selectedOff && p.selectedOff.servingGrams);
+  if (bad) { toast(bad); return; }
   addFoodEntry(p.forDate, buildEntry(p.selectedOff, p.amount, p.unit, defaultEntryAt(p.forDate, p.at)));
   closePicker(); toast('Added to log');
 }
@@ -3576,6 +3612,12 @@ function confirmCustom() {
   const name = val('custom-name').trim() || 'Custom food';
   const servingLabel = val('custom-serving').trim() || '1 serving';
   const cal = parseFloat(val('custom-cal')) || 0, p = parseFloat(val('custom-p')) || 0, c = parseFloat(val('custom-c')) || 0, f = parseFloat(val('custom-f')) || 0;
+  // `parseFloat(...) || 0` turns a blank into 0, which is fine, but it also lets
+  // a typed minus sign through as a real negative that sums into the day.
+  if ([cal, p, c, f].some((n) => !isFinite(n) || n < 0)) {
+    toast('Macros cannot be negative — check the numbers');
+    return;
+  }
   addFoodEntry(S.picker.forDate, {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     at: defaultEntryAt(S.picker.forDate, S.picker.at),
@@ -3734,6 +3776,8 @@ async function lookupBarcode(e, codeOverride) {
 window.lookupBarcode = lookupBarcode;
 function confirmBarcode() {
   const b = S.barcode;
+  const bad = amountProblem(b.amount, b.unit, b.product && b.product.servingGrams);
+  if (bad) { toast(bad); return; }
   addFoodEntry(b.forDate, buildEntry(b.product, b.amount, b.unit, defaultEntryAt(b.forDate, b.at)));
   closeBarcodeSheet(); toast('Added to log');
 }
@@ -4218,14 +4262,30 @@ function cleanEntry(raw, dateKey, i) {
   }
   return e;
 }
-function cleanLogs(raw) {
+// Silently dropping a weigh-in would be its own small mystery later, so the
+// import says how many went. Nothing is appended when none were skipped.
+function skippedWeighInsNote(stats) {
+  const n = (stats && stats.skippedWeighIns) || 0;
+  if (!n) return '';
+  return ` · ${n} weigh-in${n === 1 ? '' : 's'} skipped as out of range`;
+}
+
+// `stats`, when passed, collects what was rejected so the caller can report it.
+function cleanLogs(raw, stats) {
   const out = {};
   if (!raw || typeof raw !== 'object') return out;
   Object.keys(raw).forEach((dk) => {
     if (!DATE_KEY_RE.test(dk)) return;           // 'foo' would poison addDays()
     const day = raw[dk];
     if (!day || typeof day !== 'object') return; // a null day crashes the dashboard
-    const w = day.weightLbs == null ? null : num(day.weightLbs, null);
+    let w = day.weightLbs == null ? null : num(day.weightLbs, null);
+    // The same range saveWeightFromInput enforces. A kg value, or one malformed
+    // row, would otherwise sit in the history distorting the trend and the TDEE
+    // regression with nothing to show it was wrong. The day keeps its food.
+    if (w != null && !weighInInRange(w)) {
+      w = null;
+      if (stats) stats.skippedWeighIns = (stats.skippedWeighIns || 0) + 1;
+    }
     const foods = Array.isArray(day.foods)
       ? day.foods.map((f, i) => cleanEntry(f, dk, i)).filter(Boolean) : [];
     out[dk] = { weightLbs: w, foods };
@@ -4355,7 +4415,8 @@ function importData(e) {
       // account it's being imported into.
       if (data.merge || (!data.profile && !data.targets)) {
         if (!data.logs && !data.savedFoods) throw new Error('Nothing to merge');
-        const incoming = cleanLogs(data.logs);
+        const importStats = {};
+        const incoming = cleanLogs(data.logs, importStats);
         const merged = Object.assign({}, S.logs);
         let addedDays = 0, addedFoods = 0;
         Object.keys(incoming).forEach((dk) => {
@@ -4431,7 +4492,7 @@ function importData(e) {
 
         persistLogs(); persistSavedFoods();
         render();
-        toast(`Merged ${addedFoods} entries across ${addedDays || Object.keys(incoming).length} days`);
+        toast(`Merged ${addedFoods} entries across ${addedDays || Object.keys(incoming).length} days${skippedWeighInsNote(importStats)}`);
         return;
       }
 
@@ -4441,7 +4502,8 @@ function importData(e) {
       const profile = cleanProfile(data.profile);
       const targets = cleanTargets(data.targets);
       if (!profile || !targets) throw new Error('Missing or malformed profile/targets');
-      const logs = cleanLogs(data.logs);
+      const importStats = {};
+      const logs = cleanLogs(data.logs, importStats);
       const dayCount = Object.keys(logs).length;
       const mine = Object.keys(S.logs).length;
       if (!confirm(`Replace everything in this account with this backup?\n\n`
@@ -4457,7 +4519,7 @@ function importData(e) {
       // to an empty list rather than throwing.
       S.recipes = cleanRecipes(data.recipes);
       persistProfile(); persistTargets(); persistLogs(); persistSavedFoods(); persistRecipes();
-      render(); toast('Backup restored');
+      render(); toast(`Backup restored${skippedWeighInsNote(importStats)}`);
     } catch (err) { toast('Could not read that file — is it a Tare backup?'); }
   };
   reader.readAsText(file);
