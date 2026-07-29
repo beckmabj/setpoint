@@ -470,7 +470,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 52;
+const BUILD = 53;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -610,6 +610,21 @@ function amountProblem(amount, unit, servingGrams) {
 function weighInInRange(lbs) {
   const n = Number(lbs);
   return isFinite(n) && n >= MIN_WEIGH_IN_LB && n <= MAX_WEIGH_IN_LB;
+}
+
+// Servings-based entries — custom foods, saved foods, recipes — carry no gram
+// weight, so MAX_ENTRY_GRAMS cannot bound them; the multiplier is bounded
+// instead. 200 of anything is already absurd, so this only ever catches a stray
+// digit — which is the point: a ×99999 multiplier wrote 59,999,400 calories into
+// a day before this existed.
+const MIN_SERVINGS = 0.25;
+const MAX_SERVINGS = 200;
+
+function servingsProblem(mult) {
+  const n = Number(mult);
+  if (!isFinite(n) || n < MIN_SERVINGS) return `Enter at least ${MIN_SERVINGS} of a serving`;
+  if (n > MAX_SERVINGS) return `That's over ${MAX_SERVINGS} servings — check the number`;
+  return null;
 }
 
 function unitsFor(food) {
@@ -2407,7 +2422,9 @@ function confirmFlat() {
   const p = S.picker;
   const f = p.selectedFlat;
   const mult = Number(p.flatMult) || 0;
-  if (!f || mult < 0.25) return;
+  if (!f) return;
+  const bad = servingsProblem(mult);
+  if (bad) { toast(bad); return; }
   const base = flatBase(f);
   // flatBase and flatMult ride along so a later edit scales from the ×1 values
   // rather than from whatever is currently stored.
@@ -3333,7 +3350,10 @@ function confirmRecipe() {
   const p = S.picker;
   const recipe = p.selectedRecipe;
   const mult = Number(p.recipeMult) || 0;
-  if (!recipe || mult <= 0) return;
+  if (!recipe) return;
+  // Same defect as confirmFlat: the lower end was guarded, the upper end was not.
+  const bad = servingsProblem(mult);
+  if (bad) { toast(bad); return; }
   const macros = recipePreview(recipe, mult);
   addFoodEntry(p.forDate, Object.assign({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
