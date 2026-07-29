@@ -352,6 +352,9 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 /* food picker tabs reuse .pill-toggle */
 .food-row { display: flex; align-items: center; justify-content: space-between; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 13px; padding: 13px 14px; cursor: pointer; text-align: left; width: 100%; }
 .food-row + .food-row { margin-top: 6px; }
+/* An ineligible row should read as unavailable, not merely quiet: the faint
+   name alone left it looking tappable, cursor and all. */
+.food-row:disabled { cursor: default; border-color: color-mix(in srgb, var(--line) 55%, transparent); }
 .macro-tile { background: var(--tan-soft); border-radius: 8px; padding: 7px 0; text-align: center; }
 .macro-tile .v { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 14px; }
 .macro-tile .l { font-size: 10.5px; color: var(--ink-faint); }
@@ -467,7 +470,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 49;
+const BUILD = 50;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -1018,12 +1021,15 @@ async function migrateLogsToShards(uid) {
 // logs and saved foods in memory, rendered them under the new account, and
 // persisted them into it on the next write. Clearing once, up front, makes that
 // impossible to reintroduce one field at a time.
+// The empty value of every account-owned field, in one place. clearAccountState
+// applies it locally; resetAllData writes the same shape to the server, so a
+// field added here cannot be cleared on the device while surviving in Firestore.
+function emptyAccountFields() {
+  return { profile: null, targets: null, logs: {}, savedFoods: [], recipes: [] };
+}
+
 function clearAccountState() {
-  S.profile = null;
-  S.targets = null;
-  S.logs = {};
-  S.savedFoods = [];
-  S.recipes = [];
+  Object.assign(S, emptyAccountFields());
   knownShardMonths = new Set();
 }
 
@@ -2963,10 +2969,10 @@ function renderPickerLibrary() {
     <button class="btn btn-outline btn-sm mb2" onclick="backToRecipeList()">${iconChevronL} back to list</button>
     <div class="t15 w600 mb1">${esc(r.name)}</div>
     <div class="t12 faint mb2">${r.ingredients.length} ingredient${r.ingredients.length === 1 ? '' : 's'} · ${r.ingredients.map((g) => esc(g.name)).join(', ')}</div>
-    <label class="field mb3"><span>Servings (1 = ${esc(r.servingLabel)})</span><input class="input" type="number" id="recipe-mult" value="${r === p.selectedRecipe ? p.recipeMult : 1}" step="0.25" min="0.25" oninput="updateRecipePreview()"></label>
+    <label class="field mb3"><span>Servings (1 = ${esc(r.servingLabel)})</span><input class="input" type="number" id="recipe-mult" value="${p.recipeMult}" step="0.25" min="0.25" oninput="updateRecipePreview()"></label>
     ${macroTiles('recipe-prev')}
     <div class="sheet-actions">
-      <button class="btn btn-primary btn-block" onclick="confirmRecipe()">Add to log</button>
+      <button class="btn btn-primary btn-block" id="recipe-add" onclick="confirmRecipe()" ${Number(p.recipeMult) >= 0.25 ? '' : 'disabled'}>Add to log</button>
       <div class="row g2 mt2">
         <button class="btn btn-outline flex1" onclick="renameRecipe('${jsId(r.id)}')">Rename</button>
         <button class="btn btn-outline flex1" onclick="deleteRecipe('${jsId(r.id)}')">Delete</button>
@@ -3003,19 +3009,46 @@ function renderPickerLibrary() {
       </div>
     </button>`).join('');
 
+  // Headings are wrapped with their lists so a filter can hide the pair. A
+  // heading left standing over nothing reads as a broken section.
   return `
   <input class="input sans mb3" id="lib-query" placeholder="Search your saved foods..." oninput="filterLibraryList()">
-  ${S.recipes.length ? `<div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">RECIPES</div>
-  <div id="recipe-list">${recipeRows}</div>
-  <div class="mb3"></div>
-  <div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">MY FOODS</div>` : ''}
-  <div id="lib-list">${rows}</div>`;
+  ${S.recipes.length ? `<div id="recipe-section">
+    <div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">RECIPES</div>
+    <div id="recipe-list">${recipeRows}</div>
+    <div class="mb3"></div>
+  </div>
+  <div id="lib-section">
+    <div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">MY FOODS</div>
+    <div id="lib-list">${rows}</div>
+  </div>` : `<div id="lib-section"><div id="lib-list">${rows}</div></div>`}
+  <div class="faint t13" id="lib-empty" style="display:none; padding:10px 0;">No saved foods or recipes match that search.</div>`;
 }
 function filterLibraryList() {
   const q = document.getElementById('lib-query').value.trim().toLowerCase();
-  document.querySelectorAll('#lib-list .food-row, #recipe-list .food-row').forEach((el) => {
-    el.style.display = el.getAttribute('data-name').includes(q) ? '' : 'none';
-  });
+  const shown = (selector) => {
+    let count = 0;
+    document.querySelectorAll(selector).forEach((el) => {
+      const match = el.getAttribute('data-name').includes(q);
+      el.style.display = match ? '' : 'none';
+      if (match) count += 1;
+    });
+    return count;
+  };
+  const recipes = shown('#recipe-list .food-row');
+  const foods = shown('#lib-list .food-row');
+  const toggle = (id, visible) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = visible ? '' : 'none';
+  };
+  // With nothing saved at all, #lib-list holds the "Nothing saved yet" guidance
+  // rather than rows. Hiding that and claiming "no matches" would be worse than
+  // useless, so sections only collapse when there were rows to filter.
+  const hadRows = document.querySelectorAll('#recipe-list .food-row, #lib-list .food-row').length > 0;
+  if (!hadRows) return;
+  toggle('recipe-section', recipes > 0);
+  toggle('lib-section', foods > 0);
+  toggle('lib-empty', recipes === 0 && foods === 0);
 }
 window.filterLibraryList = filterLibraryList;
 function selectSavedFood(i) { S.picker.selectedSaved = libraryFoods()[i]; S.picker.multiplier = 1; render(); setTimeout(() => updateSavedPreview(), 0); }
@@ -3123,6 +3156,10 @@ function updateRecipePreview() {
   if (!el) return;
   S.picker.recipeMult = Number(el.value) || 0;
   fillMacroTiles('recipe-prev', recipePreview(S.picker.selectedRecipe, S.picker.recipeMult));
+  // Below the input's own min, logging is meaningless. Disabling says so;
+  // confirmRecipe's guard used to just return and leave the sheet sitting there.
+  const add = document.getElementById('recipe-add');
+  if (add) add.disabled = !(S.picker.recipeMult >= 0.25);
 }
 window.updateRecipePreview = updateRecipePreview;
 
@@ -3194,11 +3231,14 @@ function copyableEntry(entry) {
   return entryToFood(entry) !== null;
 }
 
-// Days that hold food, newest first, excluding the day being copied into.
+// Days that hold copyable food, newest first, excluding the day being copied
+// into. Testing for a copyable entry rather than any entry matters: a day of
+// nothing but legacy foods would otherwise be offered and then dead-end on a
+// screen where every row is disabled and the action reads "Copy 0 foods".
 function copySourceDays() {
   const forDate = S.picker.forDate;
   return Object.keys(S.logs)
-    .filter((key) => key !== forDate && ((S.logs[key] && S.logs[key].foods) || []).length > 0)
+    .filter((key) => key !== forDate && ((S.logs[key] && S.logs[key].foods) || []).some(copyableEntry))
     .sort()
     .reverse();
 }
@@ -3265,7 +3305,7 @@ function renderPickerCopy() {
     ${items.map((f) => {
       const ok = copyableEntry(f);
       const on = ok && !!picked[f.id];
-      return `<button class="food-row" ${ok ? `onclick="toggleCopyEntry('${jsId(f.id)}')"` : 'disabled aria-disabled="true"'}>
+      return `<button class="food-row" ${ok ? `onclick="toggleCopyEntry('${jsId(f.id)}')" aria-pressed="${on}"` : 'disabled aria-disabled="true"'}>
         <span class="row-emoji mono" aria-hidden="true">${ok ? (on ? '✓' : '○') : '—'}</span>
         <div class="flex1" style="min-width:0;">
           <div class="t14 w500 ${ok ? '' : 'faint'}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(f.name)}</div>
@@ -4293,7 +4333,7 @@ function importData(e) {
 window.importData = importData;
 async function resetAllData() {
   if (!confirm('Erase ALL Tare data for this account? This cannot be undone.')) return;
-  const empty = { profile: null, targets: null, logs: {}, savedFoods: [], recipes: [] };
+  const empty = emptyAccountFields();
   const uid = currentUid;
   // Captured before the clear: clearAccountState() resets knownShardMonths, and
   // the shards it names still have to be blanked on the server below.
