@@ -470,7 +470,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 53;
+const BUILD = 54;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -1995,24 +1995,45 @@ function renderWeightExpanded(trendSeries, weeklyRate) {
 function renderEnergyBalanceCard() {
   const today = todayKey();
   const days = last7DateKeys(today);
-  const t = S.targets;
+  const open = !!S.expanded.energy;
+  const head = `<div class="row between"><span class="t13 faint">Energy Balance</span><span class="fainter t10">Last 7 days</span></div>`;
+
+  // The live estimate, from the same call the Expenditure card makes, so the two
+  // cannot report different maintenance figures on one screen. This card read
+  // S.targets.estimatedTDEE — a snapshot frozen when targets were last applied —
+  // and presented it with no qualifier, so a stale 2200 sat beside a live 2350.
+  //
+  // A stored figure is a fallback, and only when it is a real number: manual
+  // target saves used to write 0, which turned a whole day's intake into a
+  // "surplus" against nothing. Zero counts as absent here, which also neutralises
+  // cleanTargets coercing a missing value to 0 on import.
+  const est = currentEstimate();
+  const stored = Number(S.targets && S.targets.estimatedTDEE);
+  const maintenance = est.ok ? est.estimatedTDEE : (stored > 0 ? stored : null);
+  const source = est.ok
+    ? `from ${est.daysUsed} days with both weight and food`
+    : 'from your current program';
+
   const balances = days.map((d) => {
     const dl = getDayLog(d);
     if (!dl.foods || dl.foods.length === 0) return null;
-    return dayTotals(dl).calories - t.estimatedTDEE;
+    return maintenance == null ? null : dayTotals(dl).calories - maintenance;
   });
   const known = balances.filter((v) => v !== null);
-  const open = !!S.expanded.energy;
+
+  if (maintenance == null) {
+    return `<div class="card">${head}
+      <div class="faint t12" style="padding:8px 0;">No maintenance estimate yet — log weight and food on ${TDEE_MIN_DAYS}+ of the last ${TDEE_WINDOW} days.</div></div>`;
+  }
   if (known.length === 0) {
-    return `<div class="card"><div class="row between"><span class="t13 faint">Energy Balance</span><span class="fainter t10">Last 7 days</span></div>
+    return `<div class="card">${head}
       <div class="faint t12" style="padding:8px 0;">Log food to see this.</div></div>`;
   }
   const avg = round(known.reduce((a, b) => a + b, 0) / known.length);
-  return `<div class="card tappable" onclick="toggleExpand('energy')">
-    <div class="row between"><span class="t13 faint">Energy Balance</span><span class="fainter t10">Last 7 days</span></div>
+  return `<div class="card tappable" onclick="toggleExpand('energy')">${head}
     ${svgBarChart(balances.map((v) => v || 0), { w: 130, h: 40 })}
     <div class="mono w700 t14 mt1">${Math.abs(avg)} kcal ${avg <= 0 ? 'deficit' : 'surplus'}<span class="t11 faint w500"> avg/day</span></div>
-    ${open ? `<div class="fainter t11 mt2">Balance vs. your estimated maintenance of ${t.estimatedTDEE} kcal/day.</div>` : ''}
+    ${open ? `<div class="fainter t11 mt2">Balance vs. maintenance of ${maintenance} kcal/day · ${source}.</div>` : ''}
   </div>`;
 }
 
@@ -3972,6 +3993,13 @@ function updateManualSplit() {
 }
 window.updateManualSplit = updateManualSplit;
 
+function manualMaintenance() {
+  const est = currentEstimate();
+  if (est.ok) return est.estimatedTDEE;
+  const stored = Number(S.targets && S.targets.estimatedTDEE);
+  return stored > 0 ? stored : null;
+}
+
 function saveManualTargets() {
   const v = (id) => Number(document.getElementById(id).value);
   const cal = v('man-cal'), pr = v('man-p'), fat = v('man-f'), carb = v('man-c');
@@ -3979,7 +4007,12 @@ function saveManualTargets() {
   if (cal < 800 || cal > 8000) { toast(`${cal} kcal doesn't look right`); return; }
   const next = {
     calories: Math.round(cal), protein: Math.round(pr), fat: Math.round(fat), carbs: Math.round(carb),
-    estimatedTDEE: S.targets ? (S.targets.estimatedTDEE || 0) : 0,
+    // Carry forward a real maintenance figure: the live estimate if there is one,
+    // else whatever the previous program had. `|| 0` used to record a literal 0
+    // for anyone setting targets by hand before an estimate existed, and the
+    // dashboard then measured a full day's intake as a surplus against nothing.
+    // null means "unknown", which readers can detect; 0 looks like a real number.
+    estimatedTDEE: manualMaintenance(),
     date: todayKey(), source: 'manual', ok: true,
   };
   S.targets = Object.assign({}, next, { history: (S.targets && S.targets.history ? S.targets.history : []).concat([next]) });
