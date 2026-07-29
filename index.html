@@ -1935,18 +1935,26 @@ function renderWeightTrendCard() {
   const last7 = trendSeries.slice(-7);
   const open = !!S.expanded.weight;
   if (trendSeries.length === 0) {
-    return `<div class="card span2"><div class="row between"><span class="t13 faint">Weight Trend</span><span class="fainter t10">Last 7 days</span></div>
+    return `<div class="card span2"><div class="row between"><span class="t13 faint">Weight Trend</span><span class="fainter t10">Last 7 weigh-ins</span></div>
       <div class="faint t12" style="padding:8px 0;">No weigh-ins yet.</div>
       ${weightEntryRow()}</div>`;
   }
   const current = trendSeries[trendSeries.length - 1].trend;
   let weeklyRate = 0;
   if (last7.length >= 2) {
-    const pts = last7.map((p) => ({ x: daysBetween(last7[0].date, p.date), y: p.trend }));
+    // Regress RAW weigh-ins, not the EMA trend. Regressing p.trend
+    // double-smooths: the EMA (alpha 0.12, ~8-day time constant) lags the real
+    // decline, so its slope is shallower than the truth. On a series falling
+    // exactly 0.1 lb/day this reported -0.57 lb/wk instead of -0.7 — a ~19%
+    // understatement, shown right beside the goal rate. estimateFromData was
+    // fixed for precisely this and documents why; the fix never reached here.
+    // The EMA still drives the trend-weight readout and the sparkline below,
+    // which is what it is for.
+    const pts = last7.map((p) => ({ x: daysBetween(last7[0].date, p.date), y: p.weight }));
     weeklyRate = round(linRegSlope(pts) * 7, 2);
   }
   return `<div class="card tappable${open ? ' span2' : ''}" onclick="toggleExpand('weight')">
-    <div class="row between"><span class="t13 faint">Weight Trend</span><span class="fainter t10">Last 7 days</span></div>
+    <div class="row between"><span class="t13 faint">Weight Trend</span><span class="fainter t10">Last 7 weigh-ins</span></div>
     <div class="mono w700 t16">${current}<span class="t11 faint w500"> lbs</span></div>
     ${svgSparkline(last7.map((p) => p.trend), { w: 130, h: 34, color: COLOR.teal })}
     ${open ? renderWeightExpanded(trendSeries, weeklyRate) : ''}
