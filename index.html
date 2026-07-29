@@ -470,7 +470,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 50;
+const BUILD = 51;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -2303,10 +2303,110 @@ function buildEntry(food, amount, unit, atMs) {
   }, macros);
 }
 
+// An entry with flat macros and no per100: what Custom, My Foods and recipes
+// write. It carries a name, a serving label and correct macros — it simply has
+// no gram weight to rescale against, because "1 cup" has none. Such an entry is
+// scaled by servings instead, which makes it first-class, not legacy. Truly
+// legacy means no per100 AND no usable macros: nothing to scale at all.
+function flatEntry(e) {
+  return !!e && !e.per100 && Number.isFinite(Number(e.calories)) && !!(e.label || e.name);
+}
+
+// The ×1 macros an edit scales from. Stored on the entry once edited, so
+// reopening starts from where it was left rather than rescaling already-scaled
+// values — otherwise editing twice at ×2 would quadruple the entry.
+function flatBase(e) {
+  const base = e && e.flatBase && typeof e.flatBase === 'object' ? e.flatBase : e;
+  const out = {};
+  RECIPE_MACROS.forEach((k) => { out[k] = Number((base || {})[k]) || 0; });
+  return out;
+}
+
+function flatScaled(base, mult) {
+  const out = {};
+  RECIPE_MACROS.forEach((k) => {
+    out[k] = round((Number(base[k]) || 0) * mult, k === 'calories' ? 0 : 1);
+  });
+  return out;
+}
+
+// A flat entry seen as something re-loggable, for Recents.
+function entryToFlatFood(e) {
+  return Object.assign({
+    flat: true,
+    id: e.foodId || e.name,
+    name: e.name,
+    label: e.label || '1 serving',
+  }, flatBase(e));
+}
+
+// ---------------------------------------------------------------------
+// Flat entries: scaled by servings, not grams
+// ---------------------------------------------------------------------
+
+function renderFlatServings() {
+  const p = S.picker;
+  const f = p.selectedFlat;
+  const enough = Number(p.flatMult) >= 0.25;
+  return `
+  ${p.editing ? '' : `<button class="btn btn-outline btn-sm mb2" onclick="backToFlatList()">${iconChevronL} back</button>`}
+  <div class="t15 w600 mb1">${esc(f.name)}</div>
+  <div class="t12 faint mb2">${round(f.calories)} kcal per ${esc(f.label)}</div>
+  <label class="field mb3"><span>Servings (1 = ${esc(f.label)})</span><input class="input" type="number" id="flat-mult" value="${p.flatMult}" step="0.25" min="0.25" oninput="updateFlatPreview()"></label>
+  ${macroTiles('flat-prev')}
+  <div class="sheet-actions">
+    <button class="btn btn-primary btn-block" id="flat-add" onclick="confirmFlat()" ${enough ? '' : 'disabled'}>${p.editing ? 'Save changes' : 'Add to log'}</button>
+    ${p.editing ? `<button class="btn btn-outline btn-block mt2" onclick="deleteEditingEntry()">Delete this entry</button>` : ''}
+  </div>`;
+}
+
+function updateFlatPreview() {
+  const el = document.getElementById('flat-mult');
+  if (!el || !S.picker || !S.picker.selectedFlat) return;
+  S.picker.flatMult = Number(el.value) || 0;
+  fillMacroTiles('flat-prev', flatScaled(flatBase(S.picker.selectedFlat), S.picker.flatMult));
+  const add = document.getElementById('flat-add');
+  if (add) add.disabled = !(S.picker.flatMult >= 0.25);
+}
+window.updateFlatPreview = updateFlatPreview;
+
+function backToFlatList() { S.picker.selectedFlat = null; S.picker.flatMult = 1; render(); }
+window.backToFlatList = backToFlatList;
+
+function confirmFlat() {
+  const p = S.picker;
+  const f = p.selectedFlat;
+  const mult = Number(p.flatMult) || 0;
+  if (!f || mult < 0.25) return;
+  const base = flatBase(f);
+  // flatBase and flatMult ride along so a later edit scales from the ×1 values
+  // rather than from whatever is currently stored.
+  const fields = Object.assign({ name: f.name, label: f.label, flatBase: base, flatMult: mult }, flatScaled(base, mult));
+
+  if (p.editing) {
+    const dl = getDayLog(p.editing.dateKey);
+    const prev = (dl.foods || []).find((x) => x.id === p.editing.id);
+    if (!prev) { closePicker(); return; }
+    const next = Object.assign({}, prev, fields);
+    setDayLog(p.editing.dateKey, Object.assign({}, dl, {
+      foods: (dl.foods || []).map((x) => (x.id === p.editing.id ? next : x)),
+    }));
+    closePicker(); toast('Entry updated');
+    return;
+  }
+
+  addFoodEntry(p.forDate, Object.assign({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    at: defaultEntryAt(p.forDate, p.at),
+  }, fields));
+  closePicker(); toast('Added to log');
+}
+window.confirmFlat = confirmFlat;
+
 // An entry becomes a food again for re-logging.
 function entryToFood(e) {
   const p = e.per100;
-  if (!p) return null; // legacy entry, not re-loggable
+  if (!p) return null; // no gram basis — flatEntry() decides if it is still usable
   return {
     id: e.foodId || e.name, name: e.name, brand: e.brand || '',
     caloriesPer100: p.calories, proteinPer100: p.protein,
@@ -2334,7 +2434,8 @@ function recentFoods(limit) {
   });
   entries.sort((a, b) => entryTime(b) - entryTime(a));
   for (const e of entries) {
-    const food = entryToFood(e);
+    // Flat entries are re-loggable too: by servings rather than by grams.
+    const food = entryToFood(e) || (flatEntry(e) ? entryToFlatFood(e) : null);
     if (!food) continue;
     const key = foodKey(e.foodId || e.name);
     if (seen.has(key)) continue;
@@ -2406,6 +2507,7 @@ function openPicker(dateKey, atMs) {
     selectedSaved: null, multiplier: 1,
     copyDay: null, copyPicked: null,
     selectedRecipe: null, recipeMult: 1,
+    selectedFlat: null, flatMult: 1,
   };
   render();
 }
@@ -2417,6 +2519,7 @@ function setPickerTab(tab) {
   S.picker.selectedOff = null; S.picker.selectedSaved = null; S.picker.selectedRecent = null;
   S.picker.copyDay = null; S.picker.copyPicked = null;
   S.picker.selectedRecipe = null; S.picker.recipeMult = 1;
+  S.picker.selectedFlat = null; S.picker.flatMult = 1;
   render();
 }
 window.setPickerTab = setPickerTab;
@@ -2457,6 +2560,9 @@ function renderPicker() {
 
 function renderPickerSearch() {
   const p = S.picker;
+  // A flat food — custom, saved or recipe-logged — has no gram basis, so it is
+  // scaled by servings rather than by amount and unit.
+  if (p.selectedFlat) return renderFlatServings();
   // A pick, favorite or recent was chosen: that amount step lives in
   // renderPickerRecent and is unchanged, it just opens from here now.
   if (p.selectedRecent) return renderPickerRecent();
@@ -2608,7 +2714,9 @@ function renderPickerRecent() {
     out += `<div class="t11 fainter w600 mb2" style="letter-spacing:.06em;">RECENT</div>`;
     out += recents.map((r, i) => row(
       r.food,
-      `last: ${amountLabel(r.lastAmount, r.lastUnit, r.food.servingGrams)}`,
+      r.food.flat
+        ? `${round(r.food.calories)} kcal per ${esc(r.food.label)}`
+        : `last: ${amountLabel(r.lastAmount, r.lastUnit, r.food.servingGrams)}`,
       `selectRecent(${i})`,
     )).join('');
   }
@@ -2621,6 +2729,14 @@ function renderPickerRecent() {
 function selectRecent(i) {
   const r = recentFoods(30)[i];
   if (!r) return;
+  if (r.food.flat) {
+    // No gram basis: re-log it by servings, starting at ×1.
+    S.picker.selectedFlat = r.food;
+    S.picker.flatMult = 1;
+    render();
+    setTimeout(() => updateFlatPreview(), 0);
+    return;
+  }
   S.picker.selectedRecent = r.food;
   S.picker.amount = r.lastAmount;
   S.picker.unit = unitsFor(r.food).includes(r.lastUnit) ? r.lastUnit : 'g';
@@ -2672,8 +2788,22 @@ function editEntry(dateKey, entryId) {
   const entry = (dl.foods || []).find((f) => jsId(f.id) === entryId);
   if (!entry) return;
   const food = entryToFood(entry);
+  if (!food && flatEntry(entry)) {
+    // No gram basis, but real macros and a serving label: edit it by servings.
+    S.picker = {
+      forDate: dateKey, at: entryTime(entry) || null, tab: 'search', query: '', results: [], status: 'idle',
+      selectedOff: null, selectedRecent: null, selectedSaved: null, multiplier: 1,
+      selectedRecipe: null, recipeMult: 1, copyDay: null, copyPicked: null,
+      selectedFlat: entryToFlatFood(entry),
+      flatMult: Number(entry.flatMult) > 0 ? Number(entry.flatMult) : 1,
+      editing: { dateKey, id: entry.id },
+    };
+    render();
+    setTimeout(() => updateFlatPreview(), 0);
+    return;
+  }
   if (!food) {
-    // Pre-dates the per-100g entry shape, so there's no basis to rescale it.
+    // No per100 and no usable macros: nothing to scale against.
     toast('This entry is too old to edit — delete and re-add it');
     return;
   }
@@ -3228,7 +3358,9 @@ window.deleteRecipe = deleteRecipe;
 // Legacy entries predating per100 cannot be re-logged; entryToFood is the
 // existing test for that, so reuse it rather than inventing a second rule.
 function copyableEntry(entry) {
-  return entryToFood(entry) !== null;
+  // A copy clones the entry outright, so anything with usable macros can be
+  // copied — gram-based or flat. Only a truly legacy entry cannot.
+  return entryToFood(entry) !== null || flatEntry(entry);
 }
 
 // Days that hold copyable food, newest first, excluding the day being copied
