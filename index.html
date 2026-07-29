@@ -292,6 +292,12 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
    matching padding let the opaque backing span the sheet's own padding, or rows
    would show through at the edges as they pass beneath. */
 .picker-dock { position: sticky; top: 0; z-index: 3; background: var(--paper); margin: 0 calc(-16px - env(safe-area-inset-right)) 12px calc(-16px - env(safe-area-inset-left)); padding: 2px calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left)); }
+/* Adding food is the most-used flow and had the least room: the sheet was sized
+   by its content, so it opened as a small panel and resized as tabs changed or
+   results loaded. A fixed height stops that. max-height still caps it, so the
+   keyboard inset and the safe areas keep winning, and the >=480px rule still
+   applies its 80vh. Only the picker opts in; the barcode sheet is unchanged. */
+.sheet--tall { height: 85dvh; }
 .tl { position: relative; }
 .tl-hour { position: relative; padding-left: 46px; margin-bottom: 4px; }
 .tl-hour::before { content: ''; position: absolute; left: 21px; top: 0; bottom: -4px; width: 1px; background: var(--line); }
@@ -2416,7 +2422,7 @@ function renderPicker() {
 
   // Editing targets one specific entry, so the source tabs are meaningless.
   return `<div class="overlay" onclick="closePicker()">
-    <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet sheet--tall" onclick="event.stopPropagation()">
       <div class="row between mb3">
         <span class="sect-h" style="margin:0;">${p.editing ? 'Edit entry' : 'Add food'}</span>
         <div class="row g2">
