@@ -470,7 +470,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 54;
+const BUILD = 55;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -3884,7 +3884,11 @@ function renderStrategy() {
     <div class="row between mt3" style="grid-template-columns:repeat(7,1fr);">
       ${days.map((d) => `<div class="flex1 t10 fainter" style="text-align:center;">${d}</div>`).join('')}
     </div>
-    <div class="fainter t11 mt2">Est. maintenance: ${t.estimatedTDEE} kcal/day · source: ${t.source === 'data' ? `your data (${t.daysUsed} days)` : 'starting formula'}</div>
+    <!-- estimatedTDEE is null when targets were set by hand before any estimate
+         existed, and 0 on older records or after cleanTargets coerces a missing
+         value on import. Neither is a maintenance figure, so neither is printed
+         as one — this line used to render "null kcal/day". -->
+    <div class="fainter t11 mt2">Est. maintenance: ${Number(t.estimatedTDEE) > 0 ? `${t.estimatedTDEE} kcal/day` : 'not estimated yet'} · source: ${t.source === 'data' ? `your data (${t.daysUsed} days)` : 'starting formula'}</div>
     <button class="btn btn-outline btn-sm mt3" onclick="resetProgram()">New program (reset to formula)</button>
   </div>
 
