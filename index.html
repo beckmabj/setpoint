@@ -474,7 +474,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 55;
+const BUILD = 56;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -1284,10 +1284,16 @@ function usdaNutrient(food, name, unit) {
 // Deliberately conservative. Dropping a leading category is only safe when
 // enough survives to identify the food: "Milk, whole" must not become "whole",
 // so a category goes only when two or more segments remain after it.
+// Every entry has to be a word USDA uses as a *container* for the food, never as
+// the food itself. "sauce", "soup", "candies" and "salad dressing" failed that
+// test and are excluded: USDA writes "Sauce, ready-to-serve, pizza", and dropping
+// the category leaves "ready-to-serve, pizza" — which reads as a pizza. Likewise
+// "Soup, chicken noodle, canned, condensed" loses the word soup entirely. If a
+// category can be the noun, it does not belong here.
 const USDA_CATEGORY_PREFIXES = [
-  'cereals', 'cereals ready-to-eat', 'snacks', 'beverages', 'soup', 'soups',
-  'fast foods', 'restaurant foods', 'babyfood', 'baby food', 'candies',
-  'sauce', 'sauces', 'salad dressing', 'spices', 'syrups', 'toppings',
+  'cereals', 'cereals ready-to-eat', 'snacks', 'beverages',
+  'fast foods', 'restaurant foods', 'babyfood', 'baby food',
+  'spices', 'syrups', 'toppings',
 ];
 
 function searchResultName(raw) {
