@@ -352,6 +352,10 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 /* food picker tabs reuse .pill-toggle */
 .food-row { display: flex; align-items: center; justify-content: space-between; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 13px; padding: 13px 14px; cursor: pointer; text-align: left; width: 100%; }
 .food-row + .food-row { margin-top: 6px; }
+/* Search result names wrap to two lines rather than being cut off at one: USDA
+   descriptions put the distinguishing words last, so a single-line ellipsis hid
+   exactly what told two hits apart. Past two lines it still ellipsises. */
+.result-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* An ineligible row should read as unavailable, not merely quiet: the faint
    name alone left it looking tappable, cursor and all. */
 .food-row:disabled { cursor: default; border-color: color-mix(in srgb, var(--line) 55%, transparent); }
@@ -470,7 +474,7 @@ select.input { font-family: 'IBM Plex Sans', sans-serif; }
 
 // Build number = commit count. Stamped automatically by tools/stamp-build.sh
 // (installed as a pre-commit hook), so it can never drift from what shipped.
-const BUILD = 55;
+const BUILD = 56;
 
 // ---------------------------------------------------------------------
 // Local device storage — theme preference ONLY. Everything else (profile,
@@ -1269,6 +1273,55 @@ function usdaNutrient(food, name, unit) {
   const list = food.foodNutrients || [];
   const hit = list.find((n) => n.nutrientName === name && (!unit || String(n.unitName).toUpperCase() === unit));
   return hit && typeof hit.value === 'number' ? hit.value : null;
+}
+
+// USDA descriptions lead with a category that carries no information when you
+// are scanning a list of hits: eight "quaker oatmeal" results all read
+// "Cereals, QUAKER, QUAKER Multi…" and the ellipsis lands before the words that
+// tell them apart. This shortens the name shown in search rows only — the name
+// stored on a logged entry is always the full original.
+//
+// Deliberately conservative. Dropping a leading category is only safe when
+// enough survives to identify the food: "Milk, whole" must not become "whole",
+// so a category goes only when two or more segments remain after it.
+// Every entry has to be a word USDA uses as a *container* for the food, never as
+// the food itself. "sauce", "soup", "candies" and "salad dressing" failed that
+// test and are excluded: USDA writes "Sauce, ready-to-serve, pizza", and dropping
+// the category leaves "ready-to-serve, pizza" — which reads as a pizza. Likewise
+// "Soup, chicken noodle, canned, condensed" loses the word soup entirely. If a
+// category can be the noun, it does not belong here.
+const USDA_CATEGORY_PREFIXES = [
+  'cereals', 'cereals ready-to-eat', 'snacks', 'beverages',
+  'fast foods', 'restaurant foods', 'babyfood', 'baby food',
+  'spices', 'syrups', 'toppings',
+];
+
+function searchResultName(raw) {
+  const full = String(raw == null ? '' : raw).trim();
+  if (!full) return full;
+
+  let parts = full.split(',').map((s) => s.trim()).filter(Boolean);
+
+  // Category prefix, only when at least two segments remain to name the food.
+  if (parts.length >= 3 && USDA_CATEGORY_PREFIXES.includes(parts[0].toLowerCase())) {
+    parts = parts.slice(1);
+  }
+
+  // A segment that only repeats what a later one already says. USDA writes
+  // "QUAKER, QUAKER Multigrain Oatmeal", where the standalone brand segment is
+  // pure duplication; identity alone would not catch that, so a segment also
+  // goes when another begins with it on a word boundary.
+  const kept = parts.filter((seg, i) => !parts.some((other, j) => {
+    if (i === j) return false;
+    const a = seg.toLowerCase();
+    const b = other.toLowerCase();
+    if (a === b) return j < i;           // identical: keep the first occurrence
+    return b.startsWith(a + ' ');         // "QUAKER" inside "QUAKER Multigrain…"
+  }));
+
+  const short = kept.join(', ').trim();
+  // Never hand back something too small to identify the food.
+  return short.length >= 3 ? short : full;
 }
 
 function mapUsdaFood(f) {
@@ -2676,7 +2729,7 @@ function renderPickerSearch() {
     <button class="food-row" onclick="selectOffResult(${i})">
       <span class="row-emoji">${foodEmoji(r.name)}</span>
       <div class="flex1" style="min-width:0;">
-        <div class="t14 w500" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.name)}</div>
+        <div class="t14 w500 result-name">${esc(searchResultName(r.name))}</div>
         <div class="t12 faint mono" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.brand ? esc(r.brand) + ' · ' : ''}${round(r.caloriesPer100)} kcal · P${round(r.proteinPer100, 1)} F${round(r.fatPer100, 1)} C${round(r.carbsPer100, 1)} <span class="fainter">/100g</span></div>
       </div>
       <span class="src-tag ${r.source === 'off' ? 'is-off' : (r.dataType === 'Branded' ? 'is-brand' : 'is-usda')}">${r.source === 'off' ? 'OFF' : (r.dataType === 'Branded' ? 'Brand' : 'USDA')}</span>
